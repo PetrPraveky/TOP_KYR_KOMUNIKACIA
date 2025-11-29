@@ -10,7 +10,8 @@
 
 namespace UDP
 {
-	constexpr std::string_view  DEBUG_IP = "127.0.0.1";
+	constexpr std::string_view DEBUG_IP = "127.0.0.1";
+	constexpr std::string_view NTB_IP = "192.168.0.199";
 	constexpr uint16_t DEBUG_PORT = 9000;
 
 	constexpr uint32_t PACKET_MAX_LENGTH = 1024;
