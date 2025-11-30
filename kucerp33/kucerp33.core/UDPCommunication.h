@@ -10,6 +10,8 @@
 
 namespace UDP
 {
+	struct Chunk;
+
 	constexpr std::string_view DEBUG_IP = "127.0.0.1";
 	constexpr std::string_view NTB_IP = "192.168.0.199";
 	constexpr uint16_t DEBUG_PORT = 9000;
@@ -36,21 +38,30 @@ namespace UDP
 
 		bool IsOk() const { return mSocket != INVALID_SOCKET; }
 		bool SendText(const std::string& text);
+		bool SendData(const void* data, size_t size);
+
+		bool SendFile(const std::string& path);
 
 	private:
 		SOCKET mSocket = INVALID_SOCKET;
 		sockaddr_in mTarget{};
+
+		uint32_t counter = 0;
 	};
 
 
-	class Reciever
+	class Receiver
 	{
 	public:
-		Reciever(uint16_t port);
-		~Reciever();
+		Receiver(uint16_t port);
+		~Receiver();
 
 		bool IsOk() const { return mSocket != INVALID_SOCKET; }
-		bool RecieveText(std::string& outText, std::string* outFromIp = nullptr, uint16_t* outFromPort = nullptr);
+		bool ReceiveText(std::string& outText, std::string* outFromIp = nullptr, uint16_t* outFromPort = nullptr);
+
+		uint32_t ParseFileData(const std::string& data, Chunk* output);
+
+		bool RecieveFile();
 
 	private:
 		SOCKET mSocket = INVALID_SOCKET;

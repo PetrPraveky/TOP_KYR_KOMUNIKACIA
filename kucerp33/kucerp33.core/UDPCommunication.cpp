@@ -1,5 +1,6 @@
 #include "UDPCommunication.h"
 #include "SmartDebug.h"
+#include "FileTransfer.h"
 
 using namespace UDP;
 
@@ -89,8 +90,71 @@ bool Sender::SendText(const std::string& text)
 		return false;
 	}
 
+	std::cout << "Sending message: \"" << text << "\"\n";
+
 	return true;
 }
+
+/// <summary>
+/// Sends any data via UDP
+/// </summary>
+/// <param name="data"></param>
+/// <param name="size"></param>
+/// <returns></returns>
+bool Sender::SendData(const void* data, size_t size)
+{
+	if (mSocket == INVALID_SOCKET) return false;
+
+	int sent = sendto(mSocket, static_cast<const char*>(data), size, 0,
+		reinterpret_cast<sockaddr*>(&mTarget), sizeof(mTarget));
+
+	if (sent == SOCKET_ERROR)
+	{
+		ERR("sendto() failed, error: " << WSAGetLastError());
+		return false;
+	}
+
+	std::cout << ++counter << "Sending data:    \"" << static_cast<const char*>(data) << "\"\n";
+
+	return true;
+}
+
+/// <summary>
+/// Sends file by creating file transfer session for easier manipulation and then sending 
+/// via packets.
+/// </summary>
+/// <param name="path"></param>
+/// <returns></returns>
+bool Sender::SendFile(const std::string& path)
+{
+	if (mSocket == INVALID_SOCKET) return false;
+
+	FileSession session{};
+	if (!session.SetFromFile(path))
+	{
+		ERR("File session creation failed!");
+		return false;
+	}
+
+	// todo here we must have better sending for Stop and wait or something idk.
+	if (!SendText("NAME=" + session.fileName)) return false;
+	if (!SendText("SIZE=" + std::to_string(session.totalSize))) return false;
+	if (!SendText("START")) return false;
+	
+	for (auto& chunk : session.chunks)
+	{
+		if (!SendData(chunk.second.data.data(), chunk.second.packetSize))
+		{
+			ERR("Error while sending data!");
+			return false;
+		}
+	}
+
+	if (!SendText("STOP")) return false;
+
+	return true;
+}
+
 
 /// ------------------------------------------------------------------------------------------------
 /// RECIVER
@@ -100,7 +164,7 @@ bool Sender::SendText(const std::string& text)
 /// Creates reciever for defined port
 /// </summary>
 /// <param name="port"></param>
-Reciever::Reciever(uint16_t port)
+Receiver::Receiver(uint16_t port)
 {
 	mSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (mSocket == INVALID_SOCKET)
@@ -125,7 +189,7 @@ Reciever::Reciever(uint16_t port)
 /// <summary>
 /// Simple destructor
 /// </summary>
-Reciever::~Reciever()
+Receiver::~Receiver()
 {
 	if (mSocket != INVALID_SOCKET) closesocket(mSocket);
 }
@@ -137,7 +201,7 @@ Reciever::~Reciever()
 /// <param name="outFromIp"></param>
 /// <param name="outFromPort"></param>
 /// <returns></returns>
-bool Reciever::RecieveText(std::string& outText, std::string* outFromIp, uint16_t* outFromPort)
+bool Receiver::ReceiveText(std::string& outText, std::string* outFromIp, uint16_t* outFromPort)
 {
 	if (mSocket == INVALID_SOCKET)
 		return false;
@@ -169,4 +233,19 @@ bool Reciever::RecieveText(std::string& outText, std::string* outFromIp, uint16_
 		*outFromPort = ntohs(from.sin_port);
 
 	return true;
+}
+
+
+uint32_t Receiver::ParseFileData(const std::string& data, Chunk* output)
+{
+	uint32_t offset;
+	memcpy(&offset, data.data() + 5, 4);
+	offset = ntohl(offset);
+
+	output->packetSize = data.size();
+	output->data.resize(output->packetSize);
+
+	memcpy(output->data.data(), data.c_str(), output->packetSize);
+
+	return offset;
 }

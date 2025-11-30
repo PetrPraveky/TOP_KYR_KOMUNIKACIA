@@ -5,6 +5,9 @@
 
 #include "../kucerp33.core/UDPCommunication.h"
 
+//constexpr std::string_view file = "sender.txt";
+constexpr std::string_view file = "sender.png";
+
 int main()
 {
     std::cout << "Sender Module Online\n";
@@ -22,10 +25,22 @@ int main()
     std::cin.get();
 
     std::string start_message = "Can you hear me?";
-    std::cout << "Sending message: \"" << start_message << "\"\n";
     if (!sender.SendText(start_message))
     {
         std::cerr << "Message could not be sent :(.\n";
+        return 1;
+    }
+
+    // todo wait for response
+
+    std::cout << "Now sending file: " << file << "\n";
+    std::cout << "Waiting for user input\n";
+    std::cin.get();
+
+    std::string path{ file };
+    if (!sender.SendFile(path))
+    {
+        std::cerr << "File could not be sent :(.\n";
         return 1;
     }
 

@@ -125,10 +125,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="FileTransfer.h" />
     <ClInclude Include="SmartDebug.h" />
     <ClInclude Include="UDPCommunication.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="FileTransfer.cpp" />
     <ClCompile Include="UDPCommunication.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

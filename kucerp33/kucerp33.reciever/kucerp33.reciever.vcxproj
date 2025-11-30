@@ -24,6 +24,7 @@
     <ProjectGuid>{469d9964-7a42-4a63-a59f-870a89100a3f}</ProjectGuid>
     <RootNamespace>kucerp33reciever</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>kucerp33.receiver</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -125,7 +126,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="kucerp33.reciever.cpp" />
+    <ClCompile Include="kucerp33.receiver.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\kucerp33.core\kucerp33.core.vcxproj">

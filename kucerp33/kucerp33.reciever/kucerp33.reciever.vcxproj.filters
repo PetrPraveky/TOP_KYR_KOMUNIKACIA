@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="kucerp33.reciever.cpp">
+    <ClCompile Include="kucerp33.receiver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
