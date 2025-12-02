@@ -114,7 +114,7 @@ bool Sender::SendData(const void* data, size_t size)
 		return false;
 	}
 
-	std::cout << ++counter << "Sending data:    \"" << static_cast<const char*>(data) << "\"\n";
+	std::cout << "Sending data:    \"" << static_cast<const char*>(data) << "\"\n";
 
 	return true;
 }

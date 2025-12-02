@@ -21,7 +21,6 @@ int main(int argc, char* argv[])
     // Reading communication
 
     UDP::FileSession session{};
-    uint32_t counter = 0;
     while (true)
     {
         std::string msg;
@@ -36,7 +35,7 @@ int main(int argc, char* argv[])
         
         // todo check package, if its wrong, send message that it's wrong lol
 
-        std::cout << ++counter << "Received packet from: " << fromIp << ":" << fromPort << "\n";
+        std::cout << "Received packet from: " << fromIp << ":" << fromPort << "\n";
         
         // File "creation"
         // Name detection

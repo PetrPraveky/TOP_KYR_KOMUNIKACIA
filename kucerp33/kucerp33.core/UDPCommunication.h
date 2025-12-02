@@ -45,8 +45,6 @@ namespace UDP
 	private:
 		SOCKET mSocket = INVALID_SOCKET;
 		sockaddr_in mTarget{};
-
-		uint32_t counter = 0;
 	};
 
 
