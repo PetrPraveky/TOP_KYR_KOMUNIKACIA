@@ -239,7 +239,7 @@ bool Receiver::ReceiveText(std::string& outText, std::string* outFromIp, uint16_
 uint32_t Receiver::ParseFileData(const std::string& data, Chunk* output)
 {
 	uint32_t offset;
-	memcpy(&offset, data.data() + 5, 4);
+	memcpy(&offset, data.data() + Chunk::offset_padding, 4);
 	offset = ntohl(offset);
 
 	output->packetSize = data.size();

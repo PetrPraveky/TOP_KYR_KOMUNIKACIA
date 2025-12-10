@@ -60,15 +60,19 @@ int main(int argc, char* argv[])
             continue;
         }
         // Chunk reading 
-        if (msg.rfind("DATA=") == 0)
+        if (msg.rfind("DATA=") == 4)
         {
             UDP::Chunk data{};
             uint32_t offset = receiver.ParseFileData(msg, &data);
 
             // todo log if packet is already used
 
+            uint32_t retrievedCRC = data.RetrieveCRC();
+
+            uint32_t computedCRC = data.ComputeCRC();
+
             session.chunks.insert({ offset, data });
-            session.receivedBytes += data.packetSize - data.padding; // So we have correct size of file idk.
+            session.receivedBytes += data.packetSize - data.data_padding; // So we have correct size of file idk.
 
             continue;
         }

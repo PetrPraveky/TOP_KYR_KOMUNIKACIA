@@ -1,11 +1,21 @@
 #include "FileTransfer.h"
 #include "SmartDebug.h"
 
+#include "crc.hpp"
 #include <filesystem>
 #include <fstream>
 
 using namespace UDP;
 namespace fs = std::filesystem;
+
+uint32_t Chunk::ComputeCRC() {
+	boost::crc_32_type result;
+
+	result.process_bytes(data.data() + Chunk::command_padding, packetSize - Chunk::command_padding);
+	crc = result.checksum();
+
+	return result.checksum();
+}
 
 /// <summary>
 /// Opens file and fills its self with data
@@ -47,20 +57,26 @@ bool FileSession::SetFromFile(const std::string& path)
 		Chunk fileChunk{};
 
 		uint32_t offsetNet = htonl(offset);
-		std::memcpy(buffer.data(), "DATA=", 5);
-		std::memcpy(buffer.data() + 5, &offsetNet, sizeof(offsetNet));
+		std::memcpy(buffer.data() + Chunk::command_padding, "DATA=", 5);
+		std::memcpy(buffer.data() + Chunk::offset_padding, &offsetNet, sizeof(offsetNet));
 
-		// Pointer arithmetic -> +5, +4 so we 'skip' the first 4+5 bytes
-		file.read(reinterpret_cast<char*>(buffer.data() + 9), UDP::PACKET_MAX_LENGTH - 9);
+		// Pointer arithmetic -> 'skip' the first 13 bytes -> CRC+COMMAND+OFFSET
+		file.read(
+			reinterpret_cast<char*>(buffer.data() + Chunk::data_padding), 
+			UDP::PACKET_MAX_LENGTH - Chunk::data_padding);
 
 		std::streamsize bytesRead = file.gcount();
 		if (bytesRead <= 0) break; // We're on the EOF
 
-		int packetSize = 9 + static_cast<int>(bytesRead); // Max 1024 Bytes
+		int packetSize = Chunk::data_padding + static_cast<int>(bytesRead); // Max 1024 Bytes
 
 		fileChunk.data.resize(packetSize); // Resize so we don't waste space on our prescius RAM
 		std::memcpy(fileChunk.data.data(), buffer.data(), packetSize);
 		fileChunk.packetSize = packetSize;
+
+		// Do CRC
+		uint32_t crc = fileChunk.ComputeCRC();
+		std::memcpy(fileChunk.data.data(), &crc, Chunk::command_padding);
 
 		this->chunks.insert({ offset, fileChunk });
 
@@ -95,7 +111,7 @@ bool FileSession::SaveToFile(const std::string& path)
 	{
 		out.seekp(static_cast<std::streamoff>(offset), std::ios::beg);
 
-		out.write(reinterpret_cast<const char*>(data.data.data() + data.padding),
-			static_cast<std::streamsize>(data.packetSize - data.padding));
+		out.write(reinterpret_cast<const char*>(data.data.data() + data.data_padding),
+			static_cast<std::streamsize>(data.packetSize - data.data_padding));
 	}
 }
