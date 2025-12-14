@@ -101,11 +101,11 @@ bool Sender::SendText(const std::string& text)
 /// <param name="data"></param>
 /// <param name="size"></param>
 /// <returns></returns>
-bool Sender::SendData(const void* data, size_t size)
+bool Sender::SendData(const Chunk& chunk)
 {
 	if (mSocket == INVALID_SOCKET) return false;
 
-	int sent = sendto(mSocket, static_cast<const char*>(data), size, 0,
+	int sent = sendto(mSocket, static_cast<const char*>((void*)chunk.data.data()), chunk.packetSize, 0,
 		reinterpret_cast<sockaddr*>(&mTarget), sizeof(mTarget));
 
 	if (sent == SOCKET_ERROR)
@@ -114,43 +114,7 @@ bool Sender::SendData(const void* data, size_t size)
 		return false;
 	}
 
-	std::cout << "Sending data:    \"" << static_cast<const char*>(data) << "\"\n";
-
-	return true;
-}
-
-/// <summary>
-/// Sends file by creating file transfer session for easier manipulation and then sending 
-/// via packets.
-/// </summary>
-/// <param name="path"></param>
-/// <returns></returns>
-bool Sender::SendFile(const std::string& path)
-{
-	if (mSocket == INVALID_SOCKET) return false;
-
-	FileSession session{};
-	if (!session.SetFromFile(path))
-	{
-		ERR("File session creation failed!");
-		return false;
-	}
-
-	// todo here we must have better sending for Stop and wait or something idk.
-	if (!SendText("NAME=" + session.fileName)) return false;
-	if (!SendText("SIZE=" + std::to_string(session.totalSize))) return false;
-	if (!SendText("START")) return false;
-	
-	for (auto& chunk : session.chunks)
-	{
-		if (!SendData(chunk.second.data.data(), chunk.second.packetSize))
-		{
-			ERR("Error while sending data!");
-			return false;
-		}
-	}
-
-	if (!SendText("STOP")) return false;
+	PrintChunkLine(chunk);
 
 	return true;
 }
@@ -236,16 +200,179 @@ bool Receiver::ReceiveText(std::string& outText, std::string* outFromIp, uint16_
 }
 
 
-uint32_t Receiver::ParseFileData(const std::string& data, Chunk* output)
+
+bool Receiver::ReceiveData(UDP::Chunk& data, std::string* outFromIp, uint16_t* outFromPort)
 {
-	uint32_t offset;
-	memcpy(&offset, data.data() + Chunk::offset_padding, 4);
-	offset = ntohl(offset);
+	if (mSocket == INVALID_SOCKET)
+		return false;
 
-	output->packetSize = data.size();
-	output->data.resize(output->packetSize);
+	// buffer for data
+	uint8_t buffer[UDP::PACKET_MAX_LENGTH];
 
-	memcpy(output->data.data(), data.c_str(), output->packetSize);
+	sockaddr_in from{};
+	int fromLen = sizeof(from);
 
-	return offset;
+	int received = recvfrom(mSocket, reinterpret_cast<char*>(buffer), UDP::PACKET_MAX_LENGTH, 0,
+							reinterpret_cast<sockaddr*>(&from), &fromLen);
+
+	if (received == SOCKET_ERROR)
+	{
+		std::cerr << "Receiver: recvfrom() failed, err="
+			<< WSAGetLastError() << "\n";
+		return false;
+	}
+
+	if (received == 0)
+	{
+		return false;
+	}
+
+	// naplníme Chunk
+	data.packetSize = static_cast<size_t>(received);
+	data.data.resize(data.packetSize);
+	std::memcpy(data.data.data(), buffer, data.packetSize);
+
+	if (!data.CheckValidity())
+	{
+		std::cerr << "Receiver: packet exceeds PACKET_MAX_LENGTH\n";
+		return false;
+	}
+
+	// naparsujeme metainformace
+	data.RetrieveCRC();
+	data.RetrieveSeq();
+	data.RetrieveOffset();
+	uint32_t crc = data.ComputeCRC();
+
+	// (volitelnì) mùžeš tady hned zkontrolovat CRC
+	bool isOk = true;
+	if (crc != data.retrievedCRC)
+	{
+		std::cerr << "Receiver: CRC mismatch (seq=" << data.seq << ", offset=" << data.offset << ")\n";
+		isOk = false;
+	}
+
+	// IP + port odesilatele
+	if (outFromIp)
+	{
+		char ipBuff[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &from.sin_addr, ipBuff, sizeof(ipBuff));
+		*outFromIp = ipBuff;
+	}
+
+	if (outFromPort)
+		*outFromPort = ntohs(from.sin_port);
+
+	return isOk;
+}
+
+bool Receiver::SendAckOrNack(bool state, uint32_t seq, std::string ip, uint16_t port)
+{
+	UDP::Sender ackSender(ip, SEND_PORT_ACK); // na receiveru
+
+	std::string msg = "INVALID";
+	if (state)
+	{
+		msg = "ACK=" + std::to_string(seq);
+	}
+	else
+	{
+		msg = "NACK=" + std::to_string(seq);
+	}
+
+	return ackSender.SendText(msg);
+}
+
+
+bool Receiver::ReceiveAckOrNack(uint32_t expectedSeq, int timeoutMs, bool& outIsNack)
+{
+	if (mSocket == INVALID_SOCKET)
+		return false;
+
+	// Timeout
+	fd_set readfds;
+	FD_ZERO(&readfds);
+	FD_SET(mSocket, &readfds);
+
+	timeval tv{};
+	tv.tv_sec = timeoutMs / 1000;
+	tv.tv_usec = (timeoutMs % 1000) * 1000; // ms -> us
+
+	int sel = select(0, &readfds, nullptr, nullptr, &tv);
+	if (sel == SOCKET_ERROR)
+	{
+		std::cerr << "Sender: select() failed, err=" << WSAGetLastError() << "\n";
+		return false;
+	}
+
+	// Nothing
+	if (sel == 0) return false;
+
+	// Something to read
+	char buffer[1024 + 1];
+	sockaddr_in from{};
+	int fromLen = sizeof(from);
+
+	int received = recvfrom(mSocket, buffer, 1024, 0,
+		(sockaddr*)&from, &fromLen);
+
+	if (received == SOCKET_ERROR)
+	{
+		std::cerr << "Sender: recvfrom() for ACK/NACK failed, err=" << WSAGetLastError() << "\n";
+		return false;
+	}
+
+	buffer[received] = '\0';
+	std::string msg(buffer, received);
+
+	// We want "ACK=<n>" or "NACK=<n>"
+	bool isAck = false;
+	bool isNack = false;
+	uint32_t seq = 0;
+
+	if (msg.rfind("ACK=", 0) == 0)
+	{
+		isAck = true;
+		try
+		{
+			seq = static_cast<uint32_t>(std::stoul(msg.substr(4)));
+		}
+		catch (...)
+		{
+			std::cerr << "Sender: invalid ACK format: " << msg << "\n";
+			return false;
+		}
+	}
+	else if (msg.rfind("NACK=", 0) == 0)
+	{
+		isNack = true;
+		try
+		{
+			seq = static_cast<uint32_t>(std::stoul(msg.substr(5)));
+		}
+		catch (...)
+		{
+			std::cerr << "Sender: invalid NACK format: " << msg << "\n";
+			return false;
+		}
+	}
+	else
+	{
+		// Something different received
+		std::cerr << "Sender: unknown control message: " << msg << "\n";
+		return false;
+	}
+
+	// What if the NACK or ACK is for different packet?
+	if (seq != expectedSeq)
+	{
+		std::cerr << "Sender: ACK/NACK for unexpected seq=" << seq
+			<< ", expected=" << expectedSeq << "\n";
+
+		return false;
+	}
+
+	// We have our ACK or NACk
+	outIsNack = isNack;
+	return true;
 }

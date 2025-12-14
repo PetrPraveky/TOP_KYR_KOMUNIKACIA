@@ -14,7 +14,11 @@ namespace UDP
 
 	constexpr std::string_view DEBUG_IP = "127.0.0.1";
 	constexpr std::string_view NTB_IP = "192.168.0.199";
-	constexpr uint16_t DEBUG_PORT = 9000;
+
+	constexpr uint16_t RECEIVER_PORT = 15000;
+	constexpr uint16_t SEND_PORT = 14000;
+	constexpr uint16_t RECEIVER_PORT_ACK = 15001;
+	constexpr uint16_t SEND_PORT_ACK = 14001;
 
 	constexpr uint32_t PACKET_MAX_LENGTH = 1024;
 
@@ -38,10 +42,7 @@ namespace UDP
 
 		bool IsOk() const { return mSocket != INVALID_SOCKET; }
 		bool SendText(const std::string& text);
-		bool SendData(const void* data, size_t size);
-
-		bool SendFile(const std::string& path);
-
+		bool SendData(const Chunk& chunk);
 	private:
 		SOCKET mSocket = INVALID_SOCKET;
 		sockaddr_in mTarget{};
@@ -56,11 +57,10 @@ namespace UDP
 
 		bool IsOk() const { return mSocket != INVALID_SOCKET; }
 		bool ReceiveText(std::string& outText, std::string* outFromIp = nullptr, uint16_t* outFromPort = nullptr);
+		bool ReceiveData(UDP::Chunk& data, std::string* outFromIp = nullptr, uint16_t* outFromPort = nullptr);
 
-		uint32_t ParseFileData(const std::string& data, Chunk* output);
-
-		bool RecieveFile();
-
+		bool SendAckOrNack(bool state, uint32_t seq, std::string ip, uint16_t port);
+		bool ReceiveAckOrNack(uint32_t expectedSeq, int timeoutMs, bool& outIsNack);
 	private:
 		SOCKET mSocket = INVALID_SOCKET;
 	};

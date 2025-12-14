@@ -6,6 +6,35 @@
 
 #include "../kucerp33.core/UDPCommunication.h"
 #include "../kucerp33.core/FileTransfer.h"
+#include "../kucerp33.core/SmartDebug.h"
+
+bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
+{
+    while (!session.IsReceived())
+    {
+        std::string ip;
+        uint16_t port;
+        UDP::Chunk data;
+        bool state = receiver.ReceiveData(data, &ip, &port);
+
+        if (!receiver.SendAckOrNack(state, data.seq, ip, port))
+        {
+            std::cerr << "Error: ACK or NACK could not be sent.\n";
+            continue;
+        }
+        
+        if (state)
+        {
+            session.chunks.insert({ data.seq, data });
+            PrintChunkLine(data);
+
+            session.stopReceived |= data.StopReceived();
+        }
+    }
+    //session.SaveToFile();
+
+    return true;
+}
 
 int main(int argc, char* argv[])
 {
@@ -15,81 +44,59 @@ int main(int argc, char* argv[])
     UDP::WindowsSocketInit winsocket;
     if (!winsocket.IsOk()) return 1;
 
-    UDP::Receiver receiver(UDP::DEBUG_PORT);
+    //UDP::Receiver receiver(UDP::RECEIVER_PORT);
+    UDP::Receiver receiver(UDP::RECEIVER_PORT);
     if (!receiver.IsOk()) return 1;
 
     // Reading communication
 
-    UDP::FileSession session{};
     while (true)
     {
-        std::string msg;
-        std::string fromIp;
-        uint16_t fromPort = 0;
+        std::cout << "=============================\n";
+        std::cout << "   Receive file (UDP)\n";
+        std::cout << "=============================\n";
+        std::cout << "1) Stop-and-Wait\n";
+        //std::cout << "2) Bez Stop-and-Wait (rychle, nespolehlive)\n";
+        std::cout << "0) Quit\n";
+        std::cout << "Select: ";
 
-        if (!receiver.ReceiveText(msg, &fromIp, &fromPort))
+        int choice = -1;
+        if (!(std::cin >> choice))
         {
-            std::cerr << "Error while receiving!\n";
+            // Wrong input, we continue
+            std::cin.clear();
+            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+            continue;
+        }
+
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+
+        if (choice == 0)
+        {
+            std::cout << "Program stopped.\n";
             break;
         }
-        
-        // todo check package, if its wrong, send message that it's wrong lol
 
-        std::cout << "Received packet from: " << fromIp << ":" << fromPort << "\n";
-        
-        // File "creation"
-        // Name detection
-        if (msg.rfind("NAME=", 0) == 0)
+        if (choice != 1 && choice != 2)
         {
-            if (session.fileName.size() > 0) std::cerr << "Filename already in use, overwriting! \n";
-            
-            session.fileName = msg.substr(5);
+            std::cout << "Invalid choice.\n";
             continue;
         }
-        // Size detection
-        if (msg.rfind("SIZE=", 0) == 0)
+
+        UDP::FileSession session;
+        bool ok = false;
+        if (choice == 1)
         {
-            if (session.totalSize > 0) std::cerr << "Total size already defined, overwriting! \n";
-
-            session.totalSize = std::stoull(msg.substr(5));
-            continue;
-        }
-        // Chunk reading start
-        if (msg.rfind("START") == 0)
-        {
-            continue;
-        }
-        // Chunk reading 
-        if (msg.rfind("DATA=") == 4)
-        {
-            UDP::Chunk data{};
-            uint32_t offset = receiver.ParseFileData(msg, &data);
-
-            // todo log if packet is already used
-
-            uint32_t retrievedCRC = data.RetrieveCRC();
-
-            uint32_t computedCRC = data.ComputeCRC();
-
-            session.chunks.insert({ offset, data });
-            session.receivedBytes += data.packetSize - data.data_padding; // So we have correct size of file idk.
-
-            continue;
-        }
-        // Chunk reading stop
-        if (msg.rfind("STOP") == 0)
-        {
-            if (session.MissingBytes() <= 0)
+            std::cout << "Stared stop and wait\n";
+            if (!ReceiveStopAndWait(receiver, session))
             {
-                session.SaveToFile();
+                std::cerr << "Error: File could not be received.\n";
+                continue;
             }
-            else
-            {
-                std::cerr << "Received file is not the same size!";
-            }
+        }
+        else if (choice == 2)
+        {
 
-            session = {};
-            continue;
         }
     }
 

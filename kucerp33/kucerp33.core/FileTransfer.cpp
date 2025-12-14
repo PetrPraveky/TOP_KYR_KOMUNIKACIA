@@ -4,6 +4,7 @@
 #include "crc.hpp"
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 
 using namespace UDP;
 namespace fs = std::filesystem;
@@ -11,7 +12,7 @@ namespace fs = std::filesystem;
 uint32_t Chunk::ComputeCRC() {
 	boost::crc_32_type result;
 
-	result.process_bytes(data.data() + Chunk::command_padding, packetSize - Chunk::command_padding);
+	result.process_bytes(data.data() + Chunk::seq_padding, packetSize - Chunk::seq_padding);
 	crc = result.checksum();
 
 	return result.checksum();
@@ -48,6 +49,11 @@ bool FileSession::SetFromFile(const std::string& path)
 
 	this->fileName = name;
 	this->totalSize = size;
+	// todo hash
+	
+	// Create sequences
+	CreateNameChunk();
+	CreateSizeChunk();
 
 	// Start to read file
 	std::vector<unsigned char> buffer(UDP::PACKET_MAX_LENGTH);
@@ -57,6 +63,7 @@ bool FileSession::SetFromFile(const std::string& path)
 		Chunk fileChunk{};
 
 		uint32_t offsetNet = htonl(offset);
+		std::memcpy(buffer.data() + Chunk::seq_padding, &currentSequence, 4);
 		std::memcpy(buffer.data() + Chunk::command_padding, "DATA=", 5);
 		std::memcpy(buffer.data() + Chunk::offset_padding, &offsetNet, sizeof(offsetNet));
 
@@ -76,12 +83,16 @@ bool FileSession::SetFromFile(const std::string& path)
 
 		// Do CRC
 		uint32_t crc = fileChunk.ComputeCRC();
-		std::memcpy(fileChunk.data.data(), &crc, Chunk::command_padding);
+		std::memcpy(fileChunk.data.data(), &crc, Chunk::seq_padding);
 
-		this->chunks.insert({ offset, fileChunk });
+		this->chunks.insert({ currentSequence, fileChunk });
 
 		offset += static_cast<uint32_t>(bytesRead);
+
+		++currentSequence;
 	}
+
+	CreateStopChunk();
 
 	return true;
 }
@@ -89,6 +100,9 @@ bool FileSession::SetFromFile(const std::string& path)
 
 bool FileSession::SaveToFile(const std::string& path)
 {
+
+
+	/*
 	if (this->fileName.size() == 0)
 	{
 		ERR("Invalid file name!");
@@ -114,4 +128,72 @@ bool FileSession::SaveToFile(const std::string& path)
 		out.write(reinterpret_cast<const char*>(data.data.data() + data.data_padding),
 			static_cast<std::streamsize>(data.packetSize - data.data_padding));
 	}
+	*/
+
+	return true;
+}
+
+
+void FileSession::CreateNameChunk()
+{
+	// Name
+	Chunk nameChunk;
+	std::string nameCommand = "NAME=";
+	nameChunk.packetSize = Chunk::data_padding + fileName.size();
+	nameChunk.data.resize(nameChunk.packetSize); // Cuz we dont have the memory yet
+
+	memcpy(nameChunk.data.data() + Chunk::data_padding, &fileName, fileName.size());
+	memcpy(nameChunk.data.data() + Chunk::seq_padding, &currentSequence, 4);
+	memcpy(nameChunk.data.data() + Chunk::command_padding, nameCommand.c_str(), 5);
+	uint32_t nameCRC = nameChunk.ComputeCRC();
+	memcpy(nameChunk.data.data() + Chunk::crc_padding, &nameCRC, 4);
+
+	chunks.insert({ currentSequence, nameChunk });
+
+	++currentSequence;
+}
+
+
+void FileSession::CreateSizeChunk()
+{
+	// Name
+	Chunk sizeChunk;
+	std::string sizeCommand = "SIZE=";
+	
+	std::stringstream ss;
+	ss << totalSize;
+	std::string stringSize = ss.str();
+
+	sizeChunk.packetSize = Chunk::data_padding + stringSize.size();
+	sizeChunk.data.resize(sizeChunk.packetSize); // Cuz we dont have the memory yet
+
+	memcpy(sizeChunk.data.data() + Chunk::data_padding, &stringSize, stringSize.size());
+	memcpy(sizeChunk.data.data() + Chunk::seq_padding, &currentSequence, 4);
+	memcpy(sizeChunk.data.data() + Chunk::command_padding, sizeCommand.c_str(), 5);
+	uint32_t sizeCRC = sizeChunk.ComputeCRC();
+	memcpy(sizeChunk.data.data() + Chunk::crc_padding, &sizeCRC, 4);
+
+	chunks.insert({ currentSequence, sizeChunk });
+
+	++currentSequence;
+}
+
+
+void FileSession::CreateStopChunk()
+{
+	// Name
+	Chunk stopChunk;
+	std::string stopCommand = "STOP";
+	
+	stopChunk.packetSize = Chunk::data_padding;
+	stopChunk.data.resize(stopChunk.packetSize); // Cuz we dont have the memory yet
+
+	memcpy(stopChunk.data.data() + Chunk::seq_padding, &currentSequence, 4);
+	memcpy(stopChunk.data.data() + Chunk::command_padding, stopCommand.c_str(), 4);
+	uint32_t stopCRC = stopChunk.ComputeCRC();
+	memcpy(stopChunk.data.data() + Chunk::crc_padding, &stopCRC, 4);
+
+	chunks.insert({ currentSequence, stopChunk });
+
+	++currentSequence;
 }
