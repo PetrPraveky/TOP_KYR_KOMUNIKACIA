@@ -25,7 +25,7 @@ bool SendStopAndWait(UDP::Sender& sender, const UDP::FileSession& session)
             if (!sender.SendData(chunk)) return false;
 
             bool isNack = false;
-            bool gotResponse = ackReceiver.ReceiveAckOrNack(seq, 1000, isNack);
+            bool gotResponse = ackReceiver.ReceiveAckOrNack(seq, UDP::ACK_RECEIVER_TIMEOUT, isNack);
 
             if (!gotResponse)
             {

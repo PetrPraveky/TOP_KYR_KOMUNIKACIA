@@ -64,7 +64,7 @@ bool FileSession::SetFromFile(const std::string& path)
 
 		uint32_t offsetNet = htonl(offset);
 		std::memcpy(buffer.data() + Chunk::seq_padding, &currentSequence, 4);
-		std::memcpy(buffer.data() + Chunk::command_padding, "DATA=", 5);
+		std::memcpy(buffer.data() + Chunk::command_padding, "DATA", 4);
 		std::memcpy(buffer.data() + Chunk::offset_padding, &offsetNet, sizeof(offsetNet));
 
 		// Pointer arithmetic -> 'skip' the first 13 bytes -> CRC+COMMAND+OFFSET
@@ -96,6 +96,25 @@ bool FileSession::SetFromFile(const std::string& path)
 
 	return true;
 }
+
+
+/// <summary>
+/// Parses chunk data into properties of file session.
+/// </summary>
+/// <returns></returns>
+bool FileSession::ParseChunkData()
+{
+	for (auto [seq, chunk] : chunks)
+	{
+		// Name
+		if (chunk.CommandReceived("NAME"))
+			chunk.GetData<std::string>(fileName);
+		
+	}
+
+	return true;
+}
+
 
 
 bool FileSession::SaveToFile(const std::string& path)
@@ -138,13 +157,13 @@ void FileSession::CreateNameChunk()
 {
 	// Name
 	Chunk nameChunk;
-	std::string nameCommand = "NAME=";
+	std::string nameCommand = "NAME";
 	nameChunk.packetSize = Chunk::data_padding + fileName.size();
 	nameChunk.data.resize(nameChunk.packetSize); // Cuz we dont have the memory yet
 
 	memcpy(nameChunk.data.data() + Chunk::data_padding, &fileName, fileName.size());
 	memcpy(nameChunk.data.data() + Chunk::seq_padding, &currentSequence, 4);
-	memcpy(nameChunk.data.data() + Chunk::command_padding, nameCommand.c_str(), 5);
+	memcpy(nameChunk.data.data() + Chunk::command_padding, nameCommand.c_str(), 4);
 	uint32_t nameCRC = nameChunk.ComputeCRC();
 	memcpy(nameChunk.data.data() + Chunk::crc_padding, &nameCRC, 4);
 
@@ -158,7 +177,7 @@ void FileSession::CreateSizeChunk()
 {
 	// Name
 	Chunk sizeChunk;
-	std::string sizeCommand = "SIZE=";
+	std::string sizeCommand = "SIZE";
 	
 	std::stringstream ss;
 	ss << totalSize;
@@ -169,7 +188,7 @@ void FileSession::CreateSizeChunk()
 
 	memcpy(sizeChunk.data.data() + Chunk::data_padding, &stringSize, stringSize.size());
 	memcpy(sizeChunk.data.data() + Chunk::seq_padding, &currentSequence, 4);
-	memcpy(sizeChunk.data.data() + Chunk::command_padding, sizeCommand.c_str(), 5);
+	memcpy(sizeChunk.data.data() + Chunk::command_padding, sizeCommand.c_str(), 4);
 	uint32_t sizeCRC = sizeChunk.ComputeCRC();
 	memcpy(sizeChunk.data.data() + Chunk::crc_padding, &sizeCRC, 4);
 

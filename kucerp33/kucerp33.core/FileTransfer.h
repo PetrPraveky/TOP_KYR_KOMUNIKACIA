@@ -15,8 +15,8 @@ namespace UDP
 		static const uint32_t crc_padding = 0; // padding for CRC
 		static const uint32_t seq_padding = 4; // padding for sequence number
 		static const uint32_t command_padding = 8; // padding for command
-		static const uint32_t offset_padding = 13; // padding for offset
-		static const uint32_t data_padding = 17; // padding for sent data
+		static const uint32_t offset_padding = 12; // padding for offset
+		static const uint32_t data_padding = 16; // padding for sent data
 
 		size_t packetSize = 0;
 		//! !!! Raw data with offset and indentation !!!
@@ -69,14 +69,28 @@ namespace UDP
 		// Checks if stop command was received and returns true
 		bool StopReceived()
 		{
+			return CommandReceived("STOP");
+		}
+
+		bool CommandReceived(const std::string& command)
+		{
 			// Check if stop is received
 			if (data.size() < UDP::Chunk::command_padding + 4)
 				return false;
 
 			// Exactly 4 chars
-			std::string command(reinterpret_cast<const char*>(data.data() + UDP::Chunk::command_padding), 4);
+			std::string cmd(reinterpret_cast<const char*>(data.data() + UDP::Chunk::command_padding), 4);
 
-			return command == "STOP";
+			return cmd == command;
+		}
+
+		template<typename T>
+		void GetData(T& receivedData)
+		{
+			size_t dataLength = packetSize - Chunk::data_padding;
+			memcpy(&receivedData, data.data() + Chunk::data_padding, dataLength);
+
+			//return true;
 		}
 
 		uint32_t ComputeCRC();
@@ -96,19 +110,14 @@ namespace UDP
 
 		bool SetFromFile(const std::string& path);
 
+		bool ParseChunkData();
 		bool SaveToFile(const std::string& path = "");
-
-		bool MissingBytes()
-		{
-			if (chunks.size() <= 0) return 0;
-
-			return totalSize - receivedBytes;
-		}
 
 		bool IsReceived()
 		{
 			return stopReceived && chunks.rbegin()->first == chunks.size() - 1;
 		}
+
 
 	private:
 		void CreateNameChunk();

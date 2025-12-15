@@ -200,7 +200,13 @@ bool Receiver::ReceiveText(std::string& outText, std::string* outFromIp, uint16_
 }
 
 
-
+/// <summary>
+/// Receives data into chunk. Waits time to see if data is available or not. See: UDP::RECEIVER_TIMEOUT
+/// </summary>
+/// <param name="data"></param>
+/// <param name="outFromIp"></param>
+/// <param name="outFromPort"></param>
+/// <returns></returns>
 bool Receiver::ReceiveData(UDP::Chunk& data, std::string* outFromIp, uint16_t* outFromPort)
 {
 	if (mSocket == INVALID_SOCKET)
@@ -211,6 +217,24 @@ bool Receiver::ReceiveData(UDP::Chunk& data, std::string* outFromIp, uint16_t* o
 
 	sockaddr_in from{};
 	int fromLen = sizeof(from);
+
+	// Timeout
+	fd_set readfds;
+	FD_ZERO(&readfds);
+	FD_SET(mSocket, &readfds);
+
+	timeval tv{};
+	tv.tv_sec = 0;
+	tv.tv_usec = UDP::RECEIVER_TIMEOUT; // 200 ms timeout
+
+	int sel = select(0, &readfds, nullptr, nullptr, &tv);
+	if (sel == SOCKET_ERROR)
+	{
+		std::cerr << "Receiver: select() failed, err="
+			<< WSAGetLastError() << "\n";
+		return false;
+	}
+	if (sel == 0) return false; // Nothing to be read
 
 	int received = recvfrom(mSocket, reinterpret_cast<char*>(buffer), UDP::PACKET_MAX_LENGTH, 0,
 							reinterpret_cast<sockaddr*>(&from), &fromLen);
@@ -266,6 +290,15 @@ bool Receiver::ReceiveData(UDP::Chunk& data, std::string* outFromIp, uint16_t* o
 	return isOk;
 }
 
+/// <summary>
+/// Sends ACK or NACK message based on state
+// todo need to be moved as chunk packet so CRC works
+/// </summary>
+/// <param name="state"></param>
+/// <param name="seq"></param>
+/// <param name="ip"></param>
+/// <param name="port"></param>
+/// <returns></returns>
 bool Receiver::SendAckOrNack(bool state, uint32_t seq, std::string ip, uint16_t port)
 {
 	UDP::Sender ackSender(ip, SEND_PORT_ACK); // na receiveru
@@ -283,8 +316,14 @@ bool Receiver::SendAckOrNack(bool state, uint32_t seq, std::string ip, uint16_t 
 	return ackSender.SendText(msg);
 }
 
-
-bool Receiver::ReceiveAckOrNack(uint32_t expectedSeq, int timeoutMs, bool& outIsNack)
+/// <summary>
+/// Receives ACK or NACK. Waits designated time
+/// </summary>
+/// <param name="expectedSeq"></param>
+/// <param name="timeout">timeout in microseconds! see UDP::ACK_RECEIVER_TIMEOUT</param>
+/// <param name="outIsNack">received ACK/NACK</param>
+/// <returns></returns>
+bool Receiver::ReceiveAckOrNack(uint32_t expectedSeq, int timeout, bool& outIsNack)
 {
 	if (mSocket == INVALID_SOCKET)
 		return false;
@@ -295,8 +334,8 @@ bool Receiver::ReceiveAckOrNack(uint32_t expectedSeq, int timeoutMs, bool& outIs
 	FD_SET(mSocket, &readfds);
 
 	timeval tv{};
-	tv.tv_sec = timeoutMs / 1000;
-	tv.tv_usec = (timeoutMs % 1000) * 1000; // ms -> us
+	tv.tv_sec  = timeout / 1000000;
+	tv.tv_usec = timeout % 1000000;
 
 	int sel = select(0, &readfds, nullptr, nullptr, &tv);
 	if (sel == SOCKET_ERROR)
