@@ -4,7 +4,6 @@
 #include "crc.hpp"
 #include <filesystem>
 #include <fstream>
-#include <sstream>
 
 using namespace UDP;
 namespace fs = std::filesystem;
@@ -62,10 +61,9 @@ bool FileSession::SetFromFile(const std::string& path)
 	{
 		Chunk fileChunk{};
 
-		uint32_t offsetNet = htonl(offset);
 		std::memcpy(buffer.data() + Chunk::seq_padding, &currentSequence, 4);
 		std::memcpy(buffer.data() + Chunk::command_padding, "DATA", 4);
-		std::memcpy(buffer.data() + Chunk::offset_padding, &offsetNet, sizeof(offsetNet));
+		std::memcpy(buffer.data() + Chunk::offset_padding, &offset, sizeof(offset));
 
 		// Pointer arithmetic -> 'skip' the first 13 bytes -> CRC+COMMAND+OFFSET
 		file.read(
@@ -107,11 +105,27 @@ bool FileSession::ParseChunkData()
 	for (auto [seq, chunk] : chunks)
 	{
 		// Name
-		/*if (chunk.CommandReceived("NAME"))
-			chunk.GetData<std::string>(fileName);
+		if (chunk.CommandReceived("NAME"))
+		{
+			auto [ptr, len] = chunk.GetData();
+			if (!ptr || len == 0)
+			{
+				std::cerr << "ParseChunkData: NAME has invalid data!" << "\n";
+				return false;
+			}
+			fileName = std::string(reinterpret_cast<const char*>(ptr), len);
+		}
 	
 		if (chunk.CommandReceived("SIZE"))
-			chunk.GetData<size_t>(totalSize);*/
+		{
+			auto [ptr, len] = chunk.GetData();
+			if (!ptr || len < sizeof(totalSize))
+			{
+				std::cerr << "ParseChunkData: SIZE has invalid data!" << "\n";
+				return false;
+			}
+			memcpy(&totalSize, ptr, sizeof(totalSize));
+		}
 
 		// todo hash
 	}
@@ -123,9 +137,6 @@ bool FileSession::ParseChunkData()
 
 bool FileSession::SaveToFile(const std::string& path)
 {
-
-
-	/*
 	if (this->fileName.size() == 0)
 	{
 		ERR("Invalid file name!");
@@ -144,15 +155,16 @@ bool FileSession::SaveToFile(const std::string& path)
 	out.write("", 1);
 	out.seekp(0, std::ios::beg);
 
-	for (auto& [offset, data] : chunks)
+	for (auto& [seq, data] : chunks)
 	{
+		if (!data.CommandReceived("DATA")) continue; // Its not data
+		uint32_t offset = data.RetrieveOffset();
+
 		out.seekp(static_cast<std::streamoff>(offset), std::ios::beg);
 
 		out.write(reinterpret_cast<const char*>(data.data.data() + data.data_padding),
 			static_cast<std::streamsize>(data.packetSize - data.data_padding));
 	}
-	*/
-
 	return true;
 }
 
@@ -163,9 +175,12 @@ void FileSession::CreateNameChunk()
 	Chunk nameChunk;
 	std::string nameCommand = "NAME";
 	nameChunk.packetSize = Chunk::data_padding + fileName.size();
-	nameChunk.data.resize(nameChunk.packetSize); // Cuz we dont have the memory yet
 
-	memcpy(nameChunk.data.data() + Chunk::data_padding, &fileName, fileName.size());
+	// Cuz we dont have the memory yet
+	nameChunk.data.resize(nameChunk.packetSize); 
+	std::memset(nameChunk.data.data(), 0, Chunk::data_padding);
+
+	memcpy(nameChunk.data.data() + Chunk::data_padding, fileName.data(), fileName.size());
 	memcpy(nameChunk.data.data() + Chunk::seq_padding, &currentSequence, 4);
 	memcpy(nameChunk.data.data() + Chunk::command_padding, nameCommand.c_str(), 4);
 	uint32_t nameCRC = nameChunk.ComputeCRC();
@@ -182,15 +197,14 @@ void FileSession::CreateSizeChunk()
 	// Name
 	Chunk sizeChunk;
 	std::string sizeCommand = "SIZE";
+
+	sizeChunk.packetSize = Chunk::data_padding + sizeof(totalSize);
 	
-	std::stringstream ss;
-	ss << totalSize;
-	std::string stringSize = ss.str();
+	// Cuz we dont have the memory yet
+	sizeChunk.data.resize(sizeChunk.packetSize);
+	std::memset(sizeChunk.data.data(), 0, Chunk::data_padding);
 
-	sizeChunk.packetSize = Chunk::data_padding + stringSize.size();
-	sizeChunk.data.resize(sizeChunk.packetSize); // Cuz we dont have the memory yet
-
-	memcpy(sizeChunk.data.data() + Chunk::data_padding, &stringSize, stringSize.size());
+	memcpy(sizeChunk.data.data() + Chunk::data_padding, &totalSize, sizeof(totalSize));
 	memcpy(sizeChunk.data.data() + Chunk::seq_padding, &currentSequence, 4);
 	memcpy(sizeChunk.data.data() + Chunk::command_padding, sizeCommand.c_str(), 4);
 	uint32_t sizeCRC = sizeChunk.ComputeCRC();
@@ -209,7 +223,10 @@ void FileSession::CreateStopChunk()
 	std::string stopCommand = "STOP";
 	
 	stopChunk.packetSize = Chunk::data_padding;
-	stopChunk.data.resize(stopChunk.packetSize); // Cuz we dont have the memory yet
+	
+	// Cuz we dont have the memory yet
+	stopChunk.data.resize(stopChunk.packetSize);
+	std::memset(stopChunk.data.data(), 0, Chunk::data_padding);
 
 	memcpy(stopChunk.data.data() + Chunk::seq_padding, &currentSequence, 4);
 	memcpy(stopChunk.data.data() + Chunk::command_padding, stopCommand.c_str(), 4);

@@ -40,12 +40,13 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
             continue;
         }
         
+        if (!ack) continue; // We skip NACK
+        
         session.chunks.insert({ data.seq, data });
         PrintChunkLine(data);
 
         session.stopReceived |= data.StopReceived();
         
-
         // We got everything
         if (session.IsReceived() && !finished)
         {
@@ -54,7 +55,7 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
             std::cout << "Receiver: File is complete, saving file..." << "\n";
 
             session.ParseChunkData();
-            //session.SaveToFile();
+            session.SaveToFile();
         }
     }
 

@@ -8,8 +8,8 @@
 #include "../kucerp33.core/UDPCommunication.h"
 #include "../kucerp33.core/FileTransfer.h"
 
-constexpr std::string_view file = "sender.txt";
-//constexpr std::string_view file = "sender.png";
+//constexpr std::string_view file = "sender.txt";
+constexpr std::string_view file = "sender.png";
 
 bool SendStopAndWait(UDP::Sender& sender, const UDP::FileSession& session)
 {

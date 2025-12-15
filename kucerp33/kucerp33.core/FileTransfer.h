@@ -84,13 +84,18 @@ namespace UDP
 			return cmd == command;
 		}
 
-		template<typename T>
-		void GetData(T& receivedData)
+		/// <summary>
+		/// We return pair of data and length
+		/// </summary>
+		/// <returns></returns>
+		std::pair<const uint8_t*, size_t> GetData() const
 		{
-			size_t dataLength = packetSize - Chunk::data_padding;
-			memcpy(&receivedData, data.data() + Chunk::data_padding, dataLength);
+			if (packetSize <= Chunk::data_padding) return { nullptr, 0 }; // idk this is sus
 
-			//return true;
+			const uint8_t* ptr = data.data() + Chunk::data_padding;
+			size_t dataLength = packetSize - Chunk::data_padding;
+			
+			return { ptr, dataLength };
 		}
 
 		uint32_t ComputeCRC();
