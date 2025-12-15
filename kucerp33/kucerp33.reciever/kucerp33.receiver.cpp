@@ -19,8 +19,9 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
         std::string ip;
         uint16_t port;
         UDP::Chunk data;
+        bool ack;
 
-        bool state = receiver.ReceiveData(data, &ip, &port);
+        bool state = receiver.ReceiveData(data, ack, &ip, &port);
 
         // We wait few iterations
         if (!state)
@@ -33,13 +34,11 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
         }
         idle = 0; // We got something
 
-        if (!receiver.SendAckOrNack(state, data.seq, ip, port))
+        if (!receiver.SendAckOrNack(ack, data.seq, ip, port))
         {
             std::cerr << "Error: ACK or NACK could not be sent.\n";
             continue;
         }
-        
-        if (!state) continue;
         
         session.chunks.insert({ data.seq, data });
         PrintChunkLine(data);
@@ -54,7 +53,7 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
 
             std::cout << "Receiver: File is complete, saving file..." << "\n";
 
-            //session.ParseChunkData();
+            session.ParseChunkData();
             //session.SaveToFile();
         }
     }

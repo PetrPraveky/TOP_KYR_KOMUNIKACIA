@@ -207,8 +207,9 @@ bool Receiver::ReceiveText(std::string& outText, std::string* outFromIp, uint16_
 /// <param name="outFromIp"></param>
 /// <param name="outFromPort"></param>
 /// <returns></returns>
-bool Receiver::ReceiveData(UDP::Chunk& data, std::string* outFromIp, uint16_t* outFromPort)
+bool Receiver::ReceiveData(UDP::Chunk& data, bool& ack, std::string* outFromIp, uint16_t* outFromPort)
 {
+	ack = true;
 	if (mSocket == INVALID_SOCKET)
 		return false;
 
@@ -251,7 +252,7 @@ bool Receiver::ReceiveData(UDP::Chunk& data, std::string* outFromIp, uint16_t* o
 		return false;
 	}
 
-	// naplníme Chunk
+	// we get chunk
 	data.packetSize = static_cast<size_t>(received);
 	data.data.resize(data.packetSize);
 	std::memcpy(data.data.data(), buffer, data.packetSize);
@@ -268,15 +269,14 @@ bool Receiver::ReceiveData(UDP::Chunk& data, std::string* outFromIp, uint16_t* o
 	data.RetrieveOffset();
 	uint32_t crc = data.ComputeCRC();
 
-	// (volitelnì) mùžeš tady hned zkontrolovat CRC
-	bool isOk = true;
+	// CRC
 	if (crc != data.retrievedCRC)
 	{
 		std::cerr << "Receiver: CRC mismatch (seq=" << data.seq << ", offset=" << data.offset << ")\n";
-		isOk = false;
+		ack = false;
 	}
 
-	// IP + port odesilatele
+	// IP + port
 	if (outFromIp)
 	{
 		char ipBuff[INET_ADDRSTRLEN];
@@ -287,7 +287,7 @@ bool Receiver::ReceiveData(UDP::Chunk& data, std::string* outFromIp, uint16_t* o
 	if (outFromPort)
 		*outFromPort = ntohs(from.sin_port);
 
-	return isOk;
+	return true;
 }
 
 /// <summary>

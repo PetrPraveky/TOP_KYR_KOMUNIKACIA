@@ -107,9 +107,13 @@ bool FileSession::ParseChunkData()
 	for (auto [seq, chunk] : chunks)
 	{
 		// Name
-		if (chunk.CommandReceived("NAME"))
+		/*if (chunk.CommandReceived("NAME"))
 			chunk.GetData<std::string>(fileName);
-		
+	
+		if (chunk.CommandReceived("SIZE"))
+			chunk.GetData<size_t>(totalSize);*/
+
+		// todo hash
 	}
 
 	return true;

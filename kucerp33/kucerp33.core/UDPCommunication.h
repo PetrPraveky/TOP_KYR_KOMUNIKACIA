@@ -60,7 +60,7 @@ namespace UDP
 
 		bool IsOk() const { return mSocket != INVALID_SOCKET; }
 		bool ReceiveText(std::string& outText, std::string* outFromIp = nullptr, uint16_t* outFromPort = nullptr);
-		bool ReceiveData(UDP::Chunk& data, std::string* outFromIp = nullptr, uint16_t* outFromPort = nullptr);
+		bool ReceiveData(UDP::Chunk& data, bool& ack, std::string* outFromIp = nullptr, uint16_t* outFromPort = nullptr);
 
 		bool SendAckOrNack(bool state, uint32_t seq, std::string ip, uint16_t port);
 		bool ReceiveAckOrNack(uint32_t expectedSeq, int timeoutMs, bool& outIsNack);
