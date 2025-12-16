@@ -143,6 +143,37 @@ bool FileSession::SaveToFile(const std::string& path)
 		return false;
 	}
 
+	// Create bytestream for picosha2
+	std::vector<uint8_t> fileData(totalSize, 0);
+
+	for (auto& [seq, chunk] : chunks)
+	{
+		// We need only data
+		if (!chunk.CommandReceived("DATA")) continue;
+		uint32_t offset = chunk.RetrieveOffset();
+
+		size_t payloadSize = chunk.packetSize - UDP::Chunk::data_padding;
+
+		// Check if we're larger than file
+		if (offset + payloadSize > fileData.size())
+		{
+			ERR("Chunk (seq=" << seq << ") with offset=" << offset
+				<< " and size=" << payloadSize
+				<< " exceeds totalSize=" << fileData.size());
+			continue;
+		}
+
+		// We copy data from chunk into file data
+		std::memcpy(
+			fileData.data() + offset,
+			chunk.data.data() + UDP::Chunk::data_padding,
+			payloadSize
+		);
+	}
+
+	// Hash check
+	// todo
+
 	std::ofstream out(path + this->fileName, std::ios::binary);
 	if (!out)
 	{
@@ -150,21 +181,12 @@ bool FileSession::SaveToFile(const std::string& path)
 		return false;
 	}
 
-	// We create correct size
-	out.seekp(static_cast<std::streamoff>(totalSize - 1), std::ios::beg);
-	out.write("", 1);
-	out.seekp(0, std::ios::beg);
+	// We write the data
+	out.write(
+		reinterpret_cast<const char*>(fileData.data()),
+		static_cast<std::streamsize>(fileData.size())
+	);
 
-	for (auto& [seq, data] : chunks)
-	{
-		if (!data.CommandReceived("DATA")) continue; // Its not data
-		uint32_t offset = data.RetrieveOffset();
-
-		out.seekp(static_cast<std::streamoff>(offset), std::ios::beg);
-
-		out.write(reinterpret_cast<const char*>(data.data.data() + data.data_padding),
-			static_cast<std::streamsize>(data.packetSize - data.data_padding));
-	}
 	return true;
 }
 
