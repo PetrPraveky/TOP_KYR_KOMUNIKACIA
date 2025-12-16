@@ -168,7 +168,7 @@ bool SendSelectiveRepeat(UDP::Sender& sender, const UDP::FileSession& session, i
     }
 
     // Wait for NACK or ACK from receiver if file was received correctly or not.
-    constexpr size_t fileCheckTries = 10;
+    size_t fileCheckTries = window * 4;
     size_t tries = 0;
 
     while (tries < fileCheckTries)
@@ -276,9 +276,16 @@ int main()
         }
         else if (choice == 2)
         {
-            std::cout << "Using Selective repeat with window 4\n";
-            //todo add option to select window size
-            if (!SendSelectiveRepeat(sender, session, 4)) 
+
+            int window = 4;
+            std::cout << "Chose packet window: ";
+            while (!(std::cin >> window))
+            {
+                std::cout << "Not valid option, try again...\n";
+            }
+            std::cout << "Using Selective repeat with window "<< window << "\n";
+            
+            if (!SendSelectiveRepeat(sender, session, window)) 
             {
                 std::cerr << "Error: File could not be sent.\n";
             }

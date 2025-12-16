@@ -13,7 +13,7 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
     constexpr uint32_t MAX_IDLE_AFTER_FINISH = 10;
     bool finished = false;
     uint32_t idle = 0;
-    bool hashOk = true;
+    bool hashOk = false;
 
     std::string ip;
     uint16_t port;
@@ -60,9 +60,6 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
         // We got everything
         if (session.IsReceived() && !finished)
         {
-            // todo hash check -> if file is wrong we send NACK=FILE for example
-            // todo make it bit more fool proof -> we sent it multiple times?
-
             finished = true;
 
             std::cout << "Receiver: File is complete, saving file..." << "\n";
@@ -73,7 +70,6 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
                 return false;
             }
             
-            bool hashOk = true;
             if (!session.SaveToFile(hashOk)) 
             {
                 std::cerr << "Receiver: File could not be saved!\n";
@@ -84,6 +80,7 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
 
     // We send here cuz otherwise sender do weird stuff
     // We send multiple times cuz its weird
+    bool eh = session.IsReceived();
     UDP::Sender ackSender(ip, UDP::SEND_PORT_ACK);
 
     for (size_t i = 0; i < 5; ++i) ackSender.SendFileAckOrNack(hashOk);

@@ -192,10 +192,15 @@ bool FileSession::SaveToFile(bool& hashOk, const std::string& path)
 	hasher.get_hash_bytes(possibleHash.begin(), possibleHash.end());
 	
 	// We compare the hashes
-	if (possibleHash != hash) {
+	if (possibleHash != hash) 
+	{
 		std::cout << "Hash is not correct!\n";
 		hashOk = false;
 		return false;
+	}
+	else
+	{
+		hashOk = true;
 	}
 
 	std::ofstream out(path + this->fileName, std::ios::binary);
