@@ -119,6 +119,49 @@ bool Sender::SendData(const Chunk& chunk)
 	return true;
 }
 
+/// <summary>
+/// Sends ACK or NACK message based on state
+// todo need to be moved as chunk packet so CRC works
+/// </summary>
+/// <param name="state"></param>
+/// <param name="seq"></param>
+/// <param name="ip"></param>
+/// <param name="port"></param>
+/// <returns></returns>
+bool Sender::SendAckOrNack(bool state, uint32_t seq)
+{
+	std::string msg = "INVALID";
+	if (state)
+	{
+		msg = "ACK=" + std::to_string(seq);
+	}
+	else
+	{
+		msg = "NACK=" + std::to_string(seq);
+	}
+
+	return SendText(msg);
+}
+
+
+
+bool Sender::SendFileAckOrNack(bool state)
+{
+	std::string msg = "INVALID";
+	if (state)
+	{
+		std::cout << "Hash is valid, sending FACK\n";
+		msg = "FACK";
+	}
+	else
+	{
+		std::cout << "Hash is not valid, sending FNACK\n";
+		msg = "FNACK";
+	}
+
+	return SendText(msg);
+}
+
 
 /// ------------------------------------------------------------------------------------------------
 /// RECIVER
@@ -290,31 +333,7 @@ bool Receiver::ReceiveData(UDP::Chunk& data, bool& ack, std::string* outFromIp, 
 	return true;
 }
 
-/// <summary>
-/// Sends ACK or NACK message based on state
-// todo need to be moved as chunk packet so CRC works
-/// </summary>
-/// <param name="state"></param>
-/// <param name="seq"></param>
-/// <param name="ip"></param>
-/// <param name="port"></param>
-/// <returns></returns>
-bool Receiver::SendAckOrNack(bool state, uint32_t seq, std::string ip, uint16_t port)
-{
-	UDP::Sender ackSender(ip, SEND_PORT_ACK); // na receiveru
 
-	std::string msg = "INVALID";
-	if (state)
-	{
-		msg = "ACK=" + std::to_string(seq);
-	}
-	else
-	{
-		msg = "NACK=" + std::to_string(seq);
-	}
-
-	return ackSender.SendText(msg);
-}
 
 /// <summary>
 /// Receives ACK or NACK. Checks if it has correct sequence number. Waits designated time
@@ -495,6 +514,74 @@ bool Receiver::ReceiveAnyAckOrNack(uint32_t& sequence, int timeout, bool& outIsN
 			std::cerr << "Sender: invalid NACK format: " << msg << "\n";
 			return false;
 		}
+	}
+	else
+	{
+		// Something different received
+		std::cerr << "Sender: unknown control message: " << msg << "\n";
+		return false;
+	}
+
+	// We have our ACK or NACk
+	outIsNack = isNack;
+	return true;
+}
+
+
+
+bool Receiver::ReceiveFileAckOrNack(int timeout, bool& outIsNack)
+{
+	if (mSocket == INVALID_SOCKET)
+		return false;
+
+	// Timeout
+	fd_set readfds;
+	FD_ZERO(&readfds);
+	FD_SET(mSocket, &readfds);
+
+	timeval tv{};
+	tv.tv_sec = timeout / 1000000;
+	tv.tv_usec = timeout % 1000000;
+
+	int sel = select(0, &readfds, nullptr, nullptr, &tv);
+	if (sel == SOCKET_ERROR)
+	{
+		std::cerr << "Sender: select() failed, err=" << WSAGetLastError() << "\n";
+		return false;
+	}
+
+	// Nothing
+	if (sel == 0) return false;
+
+	// Something to read
+	char buffer[1024 + 1];
+	sockaddr_in from{};
+	int fromLen = sizeof(from);
+
+	int received = recvfrom(mSocket, buffer, 1024, 0,
+		(sockaddr*)&from, &fromLen);
+
+	if (received == SOCKET_ERROR)
+	{
+		std::cerr << "Receiver: recvfrom() for ACK/NACK failed, err=" << WSAGetLastError() << "\n";
+		return false;
+	}
+
+	buffer[received] = '\0';
+	std::string msg(buffer, received);
+
+	// We want "ACK=<n>" or "NACK=<n>"
+	bool isAck = false;
+	bool isNack = false;
+	uint32_t seq = 0;
+
+	if (msg.rfind("FACK", 0) == 0)
+	{
+		isAck = true;
+	}
+	else if (msg.rfind("FNACK", 0) == 0)
+	{
+		isNack = true;
 	}
 	else
 	{

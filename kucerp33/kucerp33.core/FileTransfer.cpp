@@ -2,8 +2,8 @@
 #include "SmartDebug.h"
 
 #include "crc.hpp"
+#include "picosha2.h"
 #include <filesystem>
-#include <fstream>
 
 using namespace UDP;
 namespace fs = std::filesystem;
@@ -53,6 +53,7 @@ bool FileSession::SetFromFile(const std::string& path)
 	// Create sequences
 	CreateNameChunk();
 	CreateSizeChunk();
+	CreateHashChunk(file);
 
 	// Start to read file
 	std::vector<unsigned char> buffer(UDP::PACKET_MAX_LENGTH);
@@ -116,6 +117,7 @@ bool FileSession::ParseChunkData()
 			fileName = std::string(reinterpret_cast<const char*>(ptr), len);
 		}
 	
+		// Size
 		if (chunk.CommandReceived("SIZE"))
 		{
 			auto [ptr, len] = chunk.GetData();
@@ -127,7 +129,17 @@ bool FileSession::ParseChunkData()
 			memcpy(&totalSize, ptr, sizeof(totalSize));
 		}
 
-		// todo hash
+		// Hash
+		if (chunk.CommandReceived("HASH")) 
+		{
+			auto [ptr, len] = chunk.GetData();
+			if (!ptr || len < sizeof(totalSize)) 
+			{
+				std::cerr << "ParseChunkData: HASH has invalid data!" << "\n";
+				return false;
+			}
+			memcpy(&hash, ptr, sizeof(hash));
+		}
 	}
 
 	return true;
@@ -135,7 +147,7 @@ bool FileSession::ParseChunkData()
 
 
 
-bool FileSession::SaveToFile(const std::string& path)
+bool FileSession::SaveToFile(bool& hashOk, const std::string& path)
 {
 	if (this->fileName.size() == 0)
 	{
@@ -172,7 +184,19 @@ bool FileSession::SaveToFile(const std::string& path)
 	}
 
 	// Hash check
-	// todo
+	picosha2::hash256_one_by_one hasher;
+	hasher.process(fileData.begin(), fileData.end());
+	hasher.finish();
+
+	std::array<uint8_t, 32> possibleHash;
+	hasher.get_hash_bytes(possibleHash.begin(), possibleHash.end());
+	
+	// We compare the hashes
+	if (possibleHash != hash) {
+		std::cout << "Hash is not correct!\n";
+		hashOk = false;
+		return false;
+	}
 
 	std::ofstream out(path + this->fileName, std::ios::binary);
 	if (!out)
@@ -256,6 +280,39 @@ void FileSession::CreateStopChunk()
 	memcpy(stopChunk.data.data() + Chunk::crc_padding, &stopCRC, 4);
 
 	chunks.insert({ currentSequence, stopChunk });
+
+	++currentSequence;
+}
+
+
+void FileSession::CreateHashChunk(std::ifstream& file)
+{
+	// Name
+	Chunk hashChunk;
+	std::string hashCommand = "HASH";
+	std::string hashType = "S256";
+
+	hashChunk.packetSize = Chunk::data_padding + picosha2::k_digest_size;
+
+	// Hash computation
+	picosha2::hash256(file, hash.begin(), hash.end());
+
+	// We reset file stream
+	file.clear();
+	file.seekg(0, std::ios::beg);
+
+	// Cuz we dont have the memory yet
+	hashChunk.data.resize(hashChunk.packetSize);
+	std::memset(hashChunk.data.data(), 0, Chunk::data_padding);
+
+	memcpy(hashChunk.data.data() + Chunk::seq_padding, &currentSequence, 4);
+	memcpy(hashChunk.data.data() + Chunk::command_padding, hashCommand.c_str(), 4);
+	memcpy(hashChunk.data.data() + Chunk::offset_padding, hashType.c_str(), 4);
+	memcpy(hashChunk.data.data() + Chunk::data_padding, hash.data(), hash.size());
+	uint32_t stopCRC = hashChunk.ComputeCRC();
+	memcpy(hashChunk.data.data() + Chunk::crc_padding, &stopCRC, 4);
+
+	chunks.insert({ currentSequence, hashChunk });
 
 	++currentSequence;
 }

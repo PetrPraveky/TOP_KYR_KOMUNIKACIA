@@ -46,6 +46,9 @@ namespace UDP
 		bool IsOk() const { return mSocket != INVALID_SOCKET; }
 		bool SendText(const std::string& text);
 		bool SendData(const Chunk& chunk);
+
+		bool SendAckOrNack(bool state, uint32_t seq);
+		bool SendFileAckOrNack(bool state);
 	private:
 		SOCKET mSocket = INVALID_SOCKET;
 		sockaddr_in mTarget{};
@@ -62,9 +65,9 @@ namespace UDP
 		bool ReceiveText(std::string& outText, std::string* outFromIp = nullptr, uint16_t* outFromPort = nullptr);
 		bool ReceiveData(UDP::Chunk& data, bool& ack, std::string* outFromIp = nullptr, uint16_t* outFromPort = nullptr);
 
-		bool SendAckOrNack(bool state, uint32_t seq, std::string ip, uint16_t port);
 		bool ReceiveAckOrNack(uint32_t expectedSeq, int timeoutMs, bool& outIsNack);
 		bool ReceiveAnyAckOrNack(uint32_t& expectedSeq, int timeoutMs, bool& outIsNack);
+		bool ReceiveFileAckOrNack(int timeoutMs, bool& outIsNack);
 	private:
 		SOCKET mSocket = INVALID_SOCKET;
 	};

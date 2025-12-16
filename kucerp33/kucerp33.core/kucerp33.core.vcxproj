@@ -127,6 +127,7 @@
   <ItemGroup>
     <ClInclude Include="crc.hpp" />
     <ClInclude Include="FileTransfer.h" />
+    <ClInclude Include="picosha2.h" />
     <ClInclude Include="SmartDebug.h" />
     <ClInclude Include="UDPCommunication.h" />
   </ItemGroup>

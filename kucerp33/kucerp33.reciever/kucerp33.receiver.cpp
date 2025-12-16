@@ -13,15 +13,21 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
     constexpr uint32_t MAX_IDLE_AFTER_FINISH = 10;
     bool finished = false;
     uint32_t idle = 0;
+    bool hashOk = true;
+
+    std::string ip;
+    uint16_t port;
 
     while (true)
     {
-        std::string ip;
-        uint16_t port;
         UDP::Chunk data;
         bool ack;
 
         bool state = receiver.ReceiveData(data, ack, &ip, &port);
+
+        if (ip.empty()) continue; // Not valid IP adress
+
+        UDP::Sender ackSender(ip, UDP::SEND_PORT_ACK);
 
         // We wait few iterations
         if (!state)
@@ -34,7 +40,7 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
         }
         idle = 0; // We got something
 
-        if (!receiver.SendAckOrNack(ack, data.seq, ip, port))
+        if (!ackSender.SendAckOrNack(ack, data.seq))
         {
             std::cerr << "Error: ACK or NACK could not be sent.\n";
             continue;
@@ -61,11 +67,24 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
 
             std::cout << "Receiver: File is complete, saving file..." << "\n";
 
+            if (!session.ParseChunkData()) 
+            {
+                std::cerr << "Receiver: Chunk data could not be parsed!\n";
+                return false;
+            }
+            
+            bool hashOk = true;
+            if (!session.SaveToFile(hashOk)) 
+            {
+                std::cerr << "Receiver: File could not be saved!\n";
+            }
 
-            session.ParseChunkData();
-            session.SaveToFile();
         }
     }
+
+    // We send here cuz otherwise sender do weird stuff
+    UDP::Sender ackSender(ip, UDP::SEND_PORT_ACK);
+    ackSender.SendFileAckOrNack(hashOk);
 
     return true;
 }

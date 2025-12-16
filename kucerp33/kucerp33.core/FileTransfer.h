@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <vector>
 #include <iostream>
+#include <fstream>
+#include <array>
 
 #include "UDPCommunication.h"
 
@@ -111,12 +113,14 @@ namespace UDP
 		std::map<size_t, Chunk> chunks; // <sequence number, chunk>
 		size_t currentSequence = 0;
 
+		std::array<uint8_t, 32> hash;
+
 		bool stopReceived = false;
 
 		bool SetFromFile(const std::string& path);
 
 		bool ParseChunkData();
-		bool SaveToFile(const std::string& path = "");
+		bool SaveToFile(bool& hashOk, const std::string& path = "");
 
 		bool IsReceived()
 		{
@@ -127,6 +131,7 @@ namespace UDP
 	private:
 		void CreateNameChunk();
 		void CreateSizeChunk();
+		void CreateHashChunk(std::ifstream& file);
 		void CreateStopChunk();
 	};
 }

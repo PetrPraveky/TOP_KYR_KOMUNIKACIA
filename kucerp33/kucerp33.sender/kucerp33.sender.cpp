@@ -43,7 +43,30 @@ bool SendStopAndWait(UDP::Sender& sender, const UDP::FileSession& session)
         }
     }
 
-    // todo wait for NACK or ACK from receiver if file was received correctly or not.
+    // Wait for NACK or ACK from receiver if file was received correctly or not.
+    constexpr size_t fileCheckTries = 10;
+    size_t tries = 0;
+
+    while (tries < fileCheckTries) 
+    {
+        ++tries;
+        bool isNack = false;
+        bool gotResponse = ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, isNack);
+
+        if (!gotResponse) {
+            std::cout << "Got uknown response, retrying...\n";
+            continue;
+        }
+
+        if (isNack) {
+            std::cout << "FNACK, file receive failed...\n";
+            return false;
+        }
+        else {
+            std::cout << "FACK, file receive succesful...\n";
+            return true;
+        }
+    }
 
     return true;
 }
@@ -132,6 +155,31 @@ bool SendSelectiveRepeat(UDP::Sender& sender, const UDP::FileSession& session, i
 
         // We move the window forward if possible
         while (baseSeq < totalChunks && ackedChunks[baseSeq]) ++baseSeq;
+    }
+
+    // Wait for NACK or ACK from receiver if file was received correctly or not.
+    constexpr size_t fileCheckTries = 10;
+    size_t tries = 0;
+
+    while (tries < fileCheckTries)
+    {
+        ++tries;
+        bool isNack = false;
+        bool gotResponse = ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, isNack);
+
+        if (!gotResponse) {
+            std::cout << "Got uknown response, retrying...\n";
+            continue;
+        }
+
+        if (isNack) {
+            std::cout << "FNACK, file receive failed...\n";
+            return false;
+        }
+        else {
+            std::cout << "FACK, file receive succesful...\n";
+            return true;
+        }
     }
 
     return true;

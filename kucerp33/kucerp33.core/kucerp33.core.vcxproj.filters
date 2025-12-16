@@ -27,6 +27,9 @@
     <ClInclude Include="crc.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="picosha2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="UDPCommunication.cpp">
