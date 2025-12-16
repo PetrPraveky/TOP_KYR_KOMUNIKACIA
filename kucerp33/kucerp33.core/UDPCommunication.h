@@ -23,7 +23,7 @@ namespace UDP
 	constexpr uint32_t PACKET_MAX_LENGTH = 1024;
 
 	constexpr long RECEIVER_TIMEOUT = 200 * 1000; // 200 ms
-	constexpr long ACK_RECEIVER_TIMEOUT = 1000 * 1000; // 1 s
+	constexpr long ACK_RECEIVER_TIMEOUT = 500 * 1000; // 500 ms
 
 	class WindowsSocketInit
 	{
@@ -64,6 +64,7 @@ namespace UDP
 
 		bool SendAckOrNack(bool state, uint32_t seq, std::string ip, uint16_t port);
 		bool ReceiveAckOrNack(uint32_t expectedSeq, int timeoutMs, bool& outIsNack);
+		bool ReceiveAnyAckOrNack(uint32_t& expectedSeq, int timeoutMs, bool& outIsNack);
 	private:
 		SOCKET mSocket = INVALID_SOCKET;
 	};

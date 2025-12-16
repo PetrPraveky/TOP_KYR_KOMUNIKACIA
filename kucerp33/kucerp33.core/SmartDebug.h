@@ -37,11 +37,11 @@ static void PrintChunkLine(const UDP::Chunk & chunk)
     // seqRaw = ntohl(seqRaw);
 
     // COMMAND (5 znakù)
-    unsigned char cmd[6]{};
+    unsigned char cmd[5]{};
     std::memcpy(cmd,
         chunk.data.data() + UDP::Chunk::command_padding,
-        5);
-    cmd[5] = '\0';
+        4);
+    cmd[4] = '\0';
 
     // OFFSET
     uint32_t offRaw = 0;
@@ -52,7 +52,7 @@ static void PrintChunkLine(const UDP::Chunk & chunk)
 
     // jeden radek, oddeleny mezerami
     // CRC dávám v hex (0x....), zbytek v dec
-    std::cout
+    std::cout << "Chunk: "
         << "CRC=0x" << std::hex << std::setw(8) << std::setfill('0') << crcRaw
         << " SEQ=" << std::dec << seqRaw
         << " CMD=" << cmd

@@ -263,7 +263,7 @@ bool Receiver::ReceiveData(UDP::Chunk& data, bool& ack, std::string* outFromIp, 
 		return false;
 	}
 
-	// naparsujeme metainformace
+	// We parse data into chunk for easier usage later
 	data.RetrieveCRC();
 	data.RetrieveSeq();
 	data.RetrieveOffset();
@@ -317,7 +317,7 @@ bool Receiver::SendAckOrNack(bool state, uint32_t seq, std::string ip, uint16_t 
 }
 
 /// <summary>
-/// Receives ACK or NACK. Waits designated time
+/// Receives ACK or NACK. Checks if it has correct sequence number. Waits designated time
 /// </summary>
 /// <param name="expectedSeq"></param>
 /// <param name="timeout">timeout in microseconds! see UDP::ACK_RECEIVER_TIMEOUT</param>
@@ -357,7 +357,7 @@ bool Receiver::ReceiveAckOrNack(uint32_t expectedSeq, int timeout, bool& outIsNa
 
 	if (received == SOCKET_ERROR)
 	{
-		std::cerr << "Sender: recvfrom() for ACK/NACK failed, err=" << WSAGetLastError() << "\n";
+		std::cerr << "Receiver: recvfrom() for ACK/NACK failed, err=" << WSAGetLastError() << "\n";
 		return false;
 	}
 
@@ -408,6 +408,98 @@ bool Receiver::ReceiveAckOrNack(uint32_t expectedSeq, int timeout, bool& outIsNa
 		std::cerr << "Sender: ACK/NACK for unexpected seq=" << seq
 			<< ", expected=" << expectedSeq << "\n";
 
+		return false;
+	}
+
+	// We have our ACK or NACk
+	outIsNack = isNack;
+	return true;
+}
+
+
+/// <summary>
+/// Receives any ACK or NACK. Waits designated time
+/// </summary>
+/// <param name="expectedSeq"></param>
+/// <param name="timeout">timeout in microseconds! see UDP::ACK_RECEIVER_TIMEOUT</param>
+/// <param name="outIsNack">received ACK/NACK</param>
+/// <returns></returns>
+bool Receiver::ReceiveAnyAckOrNack(uint32_t& sequence, int timeout, bool& outIsNack)
+{
+	if (mSocket == INVALID_SOCKET)
+		return false;
+
+	// Timeout
+	fd_set readfds;
+	FD_ZERO(&readfds);
+	FD_SET(mSocket, &readfds);
+
+	timeval tv{};
+	tv.tv_sec = timeout / 1000000;
+	tv.tv_usec = timeout % 1000000;
+
+	int sel = select(0, &readfds, nullptr, nullptr, &tv);
+	if (sel == SOCKET_ERROR)
+	{
+		std::cerr << "Sender: select() failed, err=" << WSAGetLastError() << "\n";
+		return false;
+	}
+
+	// Nothing
+	if (sel == 0) return false;
+
+	// Something to read
+	char buffer[1024 + 1];
+	sockaddr_in from{};
+	int fromLen = sizeof(from);
+
+	int received = recvfrom(mSocket, buffer, 1024, 0,
+		(sockaddr*)&from, &fromLen);
+
+	if (received == SOCKET_ERROR)
+	{
+		std::cerr << "Receiver: recvfrom() for ACK/NACK failed, err=" << WSAGetLastError() << "\n";
+		return false;
+	}
+
+	buffer[received] = '\0';
+	std::string msg(buffer, received);
+
+	// We want "ACK=<n>" or "NACK=<n>"
+	bool isAck = false;
+	bool isNack = false;
+	uint32_t seq = 0;
+
+	if (msg.rfind("ACK=", 0) == 0)
+	{
+		isAck = true;
+		try
+		{
+			sequence = static_cast<uint32_t>(std::stoul(msg.substr(4)));
+		}
+		catch (...)
+		{
+			std::cerr << "Sender: invalid ACK format: " << msg << "\n";
+			return false;
+		}
+	}
+	else if (msg.rfind("NACK=", 0) == 0)
+	{
+		isNack = true;
+		try
+		{
+			sequence = static_cast<uint32_t>(std::stoul(msg.substr(5)));
+		}
+		catch (...)
+		{
+			std::cerr << "Sender: invalid NACK format: " << msg << "\n";
+			return false;
+		}
+	}
+	else
+	{
+		// Something different received
+		std::cerr << "Sender: unknown control message: " << msg << "\n";
 		return false;
 	}
 

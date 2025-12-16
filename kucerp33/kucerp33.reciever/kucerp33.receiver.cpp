@@ -42,17 +42,25 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
         
         if (!ack) continue; // We skip NACK
         
-        session.chunks.insert({ data.seq, data });
-        PrintChunkLine(data);
+        // If we got duplicate packet we skip
+        if (!session.chunks.contains(data.seq)) 
+        {
+            session.chunks.insert({ data.seq, data });
+            PrintChunkLine(data);
 
-        session.stopReceived |= data.StopReceived();
+            session.stopReceived |= data.StopReceived();
+        }
         
         // We got everything
         if (session.IsReceived() && !finished)
         {
+            // todo hash check -> if file is wrong we send NACK=FILE for example
+            // todo make it bit more fool proof -> we sent it multiple times?
+
             finished = true;
 
             std::cout << "Receiver: File is complete, saving file..." << "\n";
+
 
             session.ParseChunkData();
             session.SaveToFile();
@@ -60,6 +68,12 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
     }
 
     return true;
+}
+
+
+bool ReceiveSelectiveRepeat(UDP::Receiver& receiver, UDP::FileSession& session)
+{
+    return ReceiveStopAndWait(receiver, session);
 }
 
 int main(int argc, char* argv[])
@@ -82,7 +96,7 @@ int main(int argc, char* argv[])
         std::cout << "   Receive file (UDP)\n";
         std::cout << "=============================\n";
         std::cout << "1) Stop-and-Wait\n";
-        //std::cout << "2) Bez Stop-and-Wait (rychle, nespolehlive)\n";
+        std::cout << "2) Selective Repeat\n";
         std::cout << "0) Quit\n";
         std::cout << "Select: ";
 
@@ -113,7 +127,7 @@ int main(int argc, char* argv[])
         bool ok = false;
         if (choice == 1)
         {
-            std::cout << "Stared stop and wait\n";
+            std::cout << "Started stop and wait...\n";
             if (!ReceiveStopAndWait(receiver, session))
             {
                 std::cerr << "Error: File could not be received.\n";
@@ -122,7 +136,11 @@ int main(int argc, char* argv[])
         }
         else if (choice == 2)
         {
-
+            std::cout << "Using Selective repeat...\n";
+            if (!ReceiveSelectiveRepeat(receiver, session))
+            {
+                std::cerr << "Error: File could not be received.\n";
+            }
         }
     }
 
