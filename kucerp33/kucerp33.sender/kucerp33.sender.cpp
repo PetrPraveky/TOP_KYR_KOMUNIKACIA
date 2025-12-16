@@ -60,10 +60,20 @@ bool SendStopAndWait(UDP::Sender& sender, const UDP::FileSession& session)
 
         if (isNack) {
             std::cout << "FNACK, file receive failed...\n";
+
+            // We empty out multiple sends from receiver
+            bool temp = false;
+            while (ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, temp));
+
             return false;
         }
         else {
             std::cout << "FACK, file receive succesful...\n";
+
+            // We empty out multiple sends from receiver
+            bool temp = false;
+            while (ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, temp));
+
             return true;
         }
     }
@@ -174,10 +184,20 @@ bool SendSelectiveRepeat(UDP::Sender& sender, const UDP::FileSession& session, i
 
         if (isNack) {
             std::cout << "FNACK, file receive failed...\n";
+
+            // We empty out multiple sends from receiver
+            bool temp = false;
+            while (ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, temp));
+
             return false;
         }
         else {
             std::cout << "FACK, file receive succesful...\n";
+            
+            // We empty out multiple sends from receiver
+            bool temp = false;
+            while (ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, temp));
+            
             return true;
         }
     }
