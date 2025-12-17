@@ -22,8 +22,8 @@ namespace UDP
 
 	constexpr uint32_t PACKET_MAX_LENGTH = 1024;
 
-	constexpr long RECEIVER_TIMEOUT = 200 * 1000; // 200 ms
-	constexpr long ACK_RECEIVER_TIMEOUT = 500 * 1000; // 500 ms
+	constexpr long RECEIVER_TIMEOUT = 100 * 1000; // 200 ms
+	constexpr long ACK_RECEIVER_TIMEOUT = 200 * 1000; // 500 ms
 
 	class WindowsSocketInit
 	{

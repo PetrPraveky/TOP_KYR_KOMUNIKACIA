@@ -190,6 +190,12 @@ bool FileSession::SaveToFile(bool& hashOk, const std::string& path)
 
 	std::array<uint8_t, 32> possibleHash;
 	hasher.get_hash_bytes(possibleHash.begin(), possibleHash.end());
+
+	std::string hash1(reinterpret_cast<const char*>(hash.data()), hash.size());
+	std::string hash2(reinterpret_cast<const char*>(possibleHash.data()), possibleHash.size());
+
+	std::cout << "Received hash: " << hash1 << "\n";
+	std::cout << "Computed hash: " << hash2 << "\n";
 	
 	// We compare the hashes
 	if (possibleHash != hash) 

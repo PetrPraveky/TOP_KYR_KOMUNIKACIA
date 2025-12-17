@@ -101,6 +101,22 @@ bool SendSelectiveRepeat(UDP::Sender& sender, const UDP::FileSession& session, i
     size_t baseSeq = 0;
     size_t nextSeq = 0;
 
+    // New sequence stuff
+    while (baseSeq < totalChunks) 
+    {
+        // we send window of packets
+        // -> we wait for 8? iterations of receive ACK for each sequence and 
+        // we check if sequence number is same as expected (or in expected array?)
+        // if not/timeout/nack, we mark as false and then we send another window
+        // of packets.
+
+        std::vector<UDP::Chunk> package;
+        package.reserve(window);
+
+    }
+
+
+
     // We cycle through all chunks
     while (baseSeq < totalChunks) 
     {
