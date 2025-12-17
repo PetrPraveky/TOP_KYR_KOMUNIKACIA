@@ -1,0 +1,21 @@
+T = L/R,
+L... Délka jednoho rámce -> bity
+R... Rychlost linky -> bit/s
+T... Čas vyslání jednoho rámce
+
+Vyšleme W rámců z dobu W*T
+
+Efektivní využití linky:
+U = W*T / (W*T + 2*d)
+d... Jednosměrné zpoždění
+
+Chceme aby se U blížilo jedné U -> 1, tedy W*T > 2*d
+
+W*(L/R) = 2*d
+W = 2*d(R/L)
+
+W_min = ceil(2*R*d/L)
+
+~ pokud neznáme R, pak se to dá vyjádřit:
+W_min = ceil(RTT/T), 
+kde T se dá změřit
