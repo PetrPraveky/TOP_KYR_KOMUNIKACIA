@@ -141,8 +141,13 @@ bool SendSelectiveRepeat(UDP::Sender& sender, const UDP::FileSession& session, i
             continue;
         }
         
-        // We git incorrect sequence number
-        if (ackSeq >= totalChunks || !session.chunks.contains(ackSeq)) 
+        // We skip incorrect sequence number
+        // if its outside of range of sent packets then its wrong -> theoretically it can still mess up things,
+        // but idk how else to repair it
+        if (ackSeq >= totalChunks || 
+            ackSeq < baseSeq ||
+            ackSeq >= nextSeq || 
+            !session.chunks.contains(ackSeq))
         {
             std::cout << "Sender: Received incorrect ACK/NACK sequence: " << ackSeq << "\n";
             continue;
