@@ -4,6 +4,8 @@
 #include <iostream>
 #include <string>
 #include <limits>
+#include <algorithm>
+#include <unordered_set>
 
 #include "../kucerp33.core/UDPCommunication.h"
 #include "../kucerp33.core/FileTransfer.h"
@@ -43,45 +45,10 @@ bool SendStopAndWait(UDP::Sender& sender, const UDP::FileSession& session)
         }
     }
 
-    // Wait for NACK or ACK from receiver if file was received correctly or not.
-    constexpr size_t fileCheckTries = 10;
-    size_t tries = 0;
-
-    while (tries < fileCheckTries) 
-    {
-        ++tries;
-        bool isNack = false;
-        bool gotResponse = ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, isNack);
-
-        if (!gotResponse) {
-            std::cout << "Got uknown response, retrying...\n";
-            continue;
-        }
-
-        if (isNack) {
-            std::cout << "FNACK, file receive failed...\n";
-
-            // We empty out multiple sends from receiver
-            bool temp = false;
-            while (ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, temp));
-
-            return false;
-        }
-        else {
-            std::cout << "FACK, file receive succesful...\n";
-
-            // We empty out multiple sends from receiver
-            bool temp = false;
-            while (ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, temp));
-
-            return true;
-        }
-    }
-
     return true;
 }
 
-bool SendSelectiveRepeat(UDP::Sender& sender, const UDP::FileSession& session, int window) {
+bool SendSelectiveRepeatOld(UDP::Sender& sender, const UDP::FileSession& session, int window) {
     UDP::Receiver ackReceiver(UDP::RECEIVER_PORT_ACK);
     if (!ackReceiver.IsOk()) 
     {
@@ -188,43 +155,158 @@ bool SendSelectiveRepeat(UDP::Sender& sender, const UDP::FileSession& session, i
         while (baseSeq < totalChunks && ackedChunks[baseSeq]) ++baseSeq;
     }
 
-    // Wait for NACK or ACK from receiver if file was received correctly or not.
-    size_t fileCheckTries = window * 4;
-    size_t tries = 0;
+    return true;
+}
 
-    while (tries < fileCheckTries)
+
+bool SendSelectiveRepeat(UDP::Sender& sender, const UDP::FileSession& session, int window)
+{
+    UDP::Receiver ackReceiver(UDP::RECEIVER_PORT_ACK);
+    if (!ackReceiver.IsOk())
     {
-        ++tries;
-        bool isNack = false;
-        bool gotResponse = ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, isNack);
+        std::cerr << "Sender: ACK receiver could not be initialized!\n";
+        return false;
+    }
 
-        if (!gotResponse) {
-            std::cout << "Got uknown response, retrying...\n";
-            continue;
+    if (session.chunks.empty()) return false;
+
+    // Biggest sequence number
+    size_t maxSeq = session.chunks.rbegin()->first;
+    size_t totalChunks = maxSeq + 1;
+
+    // Mask of "ACKs"
+    std::vector<bool> delivered(totalChunks, false);
+    size_t deliveredCount = 0;
+
+    size_t nextSeq = 0;
+
+    // Buffer of unsucessful packets
+    std::vector<size_t> pendingResend;
+
+    while (deliveredCount < totalChunks)
+    {
+        // We create a window of packets and reserve it
+        std::vector<size_t> windowSeqs;
+        windowSeqs.reserve(static_cast<size_t>(window));
+
+        // We refill the window with unsucessful packets
+        // -> length of pedingResend will always be <= window
+        for (size_t seq : pendingResend)
+        {
+            if (windowSeqs.size() >= static_cast<size_t>(window))
+                break;
+
+            if (seq < totalChunks && !delivered[seq] && session.chunks.contains(seq))
+            {
+                windowSeqs.push_back(seq);
+            }
+        }
+        pendingResend.clear();
+
+        // We fill the rest with new sequences
+        while (windowSeqs.size() < static_cast<size_t>(window) && nextSeq < totalChunks)
+        {
+            if (!session.chunks.contains(nextSeq))
+            {
+                ++nextSeq;
+                continue;
+            }
+
+            if (!delivered[nextSeq])
+            {
+                windowSeqs.push_back(nextSeq);
+            }
+
+            ++nextSeq;
         }
 
-        if (isNack) {
-            std::cout << "FNACK, file receive failed...\n";
+        if (windowSeqs.empty()) break;
 
-            // We empty out multiple sends from receiver
-            bool temp = false;
-            while (ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, temp));
+        // We send the whole window
+        std::cout << "Sender: SENDING NEW BATCH!\n";
+        for (size_t seq : windowSeqs)
+        {
+            if (!session.chunks.contains(seq))
+                continue;
 
-            return false;
+            if (!sender.SendData(session.chunks.at(seq)))
+            {
+                std::cerr << "Sender: SendData failed for seq=" << seq << "\n";
+                return false;
+            }
+
+            std::cout << "Sender: Sent packet with sequence " << seq << "\n";
         }
-        else {
-            std::cout << "FACK, file receive succesful...\n";
-            
-            // We empty out multiple sends from receiver
-            bool temp = false;
-            while (ackReceiver.ReceiveFileAckOrNack(UDP::ACK_RECEIVER_TIMEOUT, temp));
-            
-            return true;
+
+        // Waiting set cuz some packets are just eh
+        std::unordered_set<size_t> waiting(windowSeqs.begin(), windowSeqs.end());
+
+        // We send all the packets in window
+        for (size_t seq : windowSeqs)
+        {
+            if (seq >= totalChunks || delivered[seq]) continue;
+
+            uint32_t ackSeq = 0;
+            bool isNack = false;
+
+            bool gotResponse = ackReceiver.ReceiveAnyAckOrNack(
+                ackSeq,
+                UDP::ACK_RECEIVER_TIMEOUT,
+                isNack
+            );
+
+            // Timeout
+            if (!gotResponse)
+            {
+                std::cout << "Sender: Timeout or CRC error for seq=" << seq << ", will resend in next window\n";
+                continue;
+            }
+
+            // Fallback if something goes wrong
+            if (ackSeq >= totalChunks)
+            {
+                std::cout << "Sender: ACK/NACK for out-of-range seq=" << ackSeq << " ignored.\n";
+                continue;
+            }
+
+            // Just nack, sefl explanatory
+            if (isNack)
+            {
+                std::cout << "Sender: NACK for seq=" << ackSeq << ", will resend in next window\n";
+                pendingResend.push_back(ackSeq);
+            }
+
+            // we correctly got ACK!
+            if (!isNack && !delivered[ackSeq])
+            {
+                delivered[ackSeq] = true;
+                ++deliveredCount;
+                std::cout << "Sender: ACK received for seq=" << ackSeq << "\n";
+            }
+
+            // We erase from waiting
+            auto it = waiting.find(ackSeq);
+            if (it != waiting.end())
+            {
+                waiting.erase(it);
+            }
+        }
+
+        // We refill pending
+        for (size_t seq : waiting)
+        {
+            if (seq < totalChunks && !delivered[seq])
+            {
+                std::cout << "Sender: Timeout for seq=" << seq
+                    << ", will resend in next window\n";
+                pendingResend.push_back(seq);
+            }
         }
     }
 
     return true;
 }
+
 
 int main()
 {

@@ -78,13 +78,6 @@ bool ReceiveStopAndWait(UDP::Receiver& receiver, UDP::FileSession& session)
         }
     }
 
-    // We send here cuz otherwise sender do weird stuff
-    // We send multiple times cuz its weird
-    bool eh = session.IsReceived();
-    UDP::Sender ackSender(ip, UDP::SEND_PORT_ACK);
-
-    for (size_t i = 0; i < 5; ++i) ackSender.SendFileAckOrNack(hashOk);
-
     return true;
 }
 

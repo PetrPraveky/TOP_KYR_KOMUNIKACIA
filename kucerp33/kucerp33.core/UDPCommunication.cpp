@@ -1,6 +1,7 @@
 #include "UDPCommunication.h"
 #include "SmartDebug.h"
 #include "FileTransfer.h"
+#include "crc.hpp"
 
 using namespace UDP;
 
@@ -140,26 +141,21 @@ bool Sender::SendAckOrNack(bool state, uint32_t seq)
 		msg = "NACK=" + std::to_string(seq);
 	}
 
-	return SendText(msg);
-}
+	boost::crc_32_type result;
 
+	result.process_bytes(msg.data(), msg.size());
+	uint32_t CRC = result.checksum();
 
+	std::string withCrc;
+	withCrc.reserve(sizeof(CRC) + msg.size());
 
-bool Sender::SendFileAckOrNack(bool state)
-{
-	std::string msg = "INVALID";
-	if (state)
-	{
-		std::cout << "Hash is valid, sending FACK\n";
-		msg = "FACK";
-	}
-	else
-	{
-		std::cout << "Hash is not valid, sending FNACK\n";
-		msg = "FNACK";
-	}
+	// pøilepíme 4 byty CRC
+	withCrc.append(reinterpret_cast<const char*>(&CRC), sizeof(CRC));
 
-	return SendText(msg);
+	// za nì pùvodní payload
+	withCrc.append(msg);
+
+	return SendText(withCrc);
 }
 
 
@@ -388,36 +384,56 @@ bool Receiver::ReceiveAckOrNack(uint32_t expectedSeq, int timeout, bool& outIsNa
 	bool isNack = false;
 	uint32_t seq = 0;
 
-	if (msg.rfind("ACK=", 0) == 0)
+	// CRC
+	uint32_t receivedCRC = 0;
+	memcpy(&receivedCRC, msg.data(), sizeof(receivedCRC));
+	
+	boost::crc_32_type result;
+	result.process_bytes(msg.data() + sizeof(receivedCRC), msg.size() - sizeof(receivedCRC));
+	uint32_t CRC = result.checksum();
+
+	if (receivedCRC != CRC)
+	{
+		std::cerr << "Sender: CRC missmatch for acknowladgement : " << msg << "\n";
+		return false;
+	}
+
+	// New message 
+	const char* payloadPtr = msg.data() + sizeof(uint32_t);
+	size_t      payloadLen = msg.size() - sizeof(uint32_t);
+
+	std::string payload(payloadPtr, payloadLen);
+
+	if (payload.rfind("ACK=", 0) == 0)
 	{
 		isAck = true;
 		try
 		{
-			seq = static_cast<uint32_t>(std::stoul(msg.substr(4)));
+			seq = static_cast<uint32_t>(std::stoul(payload.substr(4)));
 		}
 		catch (...)
 		{
-			std::cerr << "Sender: invalid ACK format: " << msg << "\n";
+			std::cerr << "Sender: invalid ACK format: " << payload << "\n";
 			return false;
 		}
 	}
-	else if (msg.rfind("NACK=", 0) == 0)
+	else if (payload.rfind("NACK=", 0) == 0)
 	{
 		isNack = true;
 		try
 		{
-			seq = static_cast<uint32_t>(std::stoul(msg.substr(5)));
+			seq = static_cast<uint32_t>(std::stoul(payload.substr(5)));
 		}
 		catch (...)
 		{
-			std::cerr << "Sender: invalid NACK format: " << msg << "\n";
+			std::cerr << "Sender: invalid NACK format: " << payload << "\n";
 			return false;
 		}
 	}
 	else
 	{
 		// Something different received
-		std::cerr << "Sender: unknown control message: " << msg << "\n";
+		std::cerr << "Sender: unknown control message: " << payload << "\n";
 		return false;
 	}
 
@@ -489,36 +505,56 @@ bool Receiver::ReceiveAnyAckOrNack(uint32_t& sequence, int timeout, bool& outIsN
 	bool isNack = false;
 	uint32_t seq = 0;
 
-	if (msg.rfind("ACK=", 0) == 0)
+	// CRC Check
+	uint32_t receivedCRC = 0;
+	memcpy(&receivedCRC, msg.data(), sizeof(receivedCRC));
+
+	boost::crc_32_type result;
+	result.process_bytes(msg.data() + sizeof(receivedCRC), msg.size() - sizeof(receivedCRC));
+	uint32_t CRC = result.checksum();
+
+	if (receivedCRC != CRC)
 	{
-		isAck = true;
-		try
-		{
-			sequence = static_cast<uint32_t>(std::stoul(msg.substr(4)));
-		}
-		catch (...)
-		{
-			std::cerr << "Sender: invalid ACK format: " << msg << "\n";
-			return false;
-		}
+		std::cerr << "Sender: CRC missmatch for acknowladgement : " << msg << "\n";
+		return false;
 	}
-	else if (msg.rfind("NACK=", 0) == 0)
+
+	// Cut off message 
+	const char* payloadPtr = msg.data() + sizeof(uint32_t);
+	size_t      payloadLen = msg.size() - sizeof(uint32_t);
+
+	std::string payload(payloadPtr, payloadLen);
+
+	if (payload.rfind("NACK=", 0) == 0)
 	{
 		isNack = true;
 		try
 		{
-			sequence = static_cast<uint32_t>(std::stoul(msg.substr(5)));
+			sequence = static_cast<uint32_t>(std::stoul(payload.substr(5)));
 		}
 		catch (...)
 		{
-			std::cerr << "Sender: invalid NACK format: " << msg << "\n";
+			std::cerr << "Sender: invalid NACK format: " << payload << "\n";
+			return false;
+		}
+	}
+	else if (payload.rfind("ACK=", 0) == 0)
+	{
+		isAck = true;
+		try
+		{
+			sequence = static_cast<uint32_t>(std::stoul(payload.substr(4)));
+		}
+		catch (...)
+		{
+			std::cerr << "Sender: invalid ACK format: " << payload << "\n";
 			return false;
 		}
 	}
 	else
 	{
 		// Something different received
-		std::cerr << "Sender: unknown control message: " << msg << "\n";
+		std::cerr << "Sender: unknown control message: " << payload << "\n";
 		return false;
 	}
 
